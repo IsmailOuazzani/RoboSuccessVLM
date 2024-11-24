@@ -22,6 +22,7 @@ def process_episode(
     episode: tf.data.Dataset,
     output_path: Path,
     language_instruction: str,
+    db_manifest_path: Path,
     num_subsequences: int = 4,
     steps_per_subsequence: int = 3,
 ):
@@ -44,6 +45,16 @@ def process_episode(
         image = tf.concat(images, axis=1)
         file_path = output_path / f"{instruction_hash}_{i}.png"
         tf.io.write_file(file_path.as_posix(), tf.image.encode_png(image))
+        with open(db_manifest_path, "a") as f:
+            f.write(f'{file_path.absolute().as_posix()},"{language_instruction}",{i}\n')
+
+
+def make_new_manifest(reset: bool = True) -> Path:
+    db_manifest_path = Path("manifest.csv")
+    if reset and db_manifest_path.exists():
+        db_manifest_path.unlink()
+    db_manifest_path.write_text("path,instruction,subsequence\n")
+    return db_manifest_path
 
 
 if __name__ == "__main__":
@@ -60,7 +71,9 @@ if __name__ == "__main__":
     episodes = dataset.take(num_episodes)
     logging.info(f"Number of episodes in the dataset: {num_episodes}")
 
-    for episode in dataset:
+    db_manifest_path = make_new_manifest()
+
+    for episode in dataset:  # TODO: move to a process_dataset function
         first_step = tf.data.experimental.get_single_element(episode["steps"].take(1))
         language_instruction = (
             first_step["language_instruction"].numpy().decode("utf-8")
@@ -73,4 +86,5 @@ if __name__ == "__main__":
                 episode=episode,
                 output_path=Path("./temp/"),
                 language_instruction=language_instruction,
+                db_manifest_path=db_manifest_path,
             )
