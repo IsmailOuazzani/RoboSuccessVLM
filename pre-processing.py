@@ -75,7 +75,7 @@ def process_dataset(
         # at the moment 50k of the 76k success trajectories are annotated https://github.com/droid-dataset/droid/issues/3#issuecomment-2014178692
         logging.info(f"Instruction: {language_instruction}")
         if language_instruction:
-            # TODO: check for success
+            # TODO: check for success and add to the manifest (apparently there are 15k failures in the dataset)
             datapoints_created += process_episode(
                 episode=episode,
                 output_path=output_path,

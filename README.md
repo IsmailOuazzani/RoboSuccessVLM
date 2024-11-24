@@ -22,6 +22,16 @@ source venv/bin/activate
 ```
 
 ### Process the dataset
+Download the dataset (first 100 elements):
+```
+gsutil -m cp -r gs://gresearch/robotics/droid_100 <your_local_path>
+```
+or download the full dataset (1.7Tb):
+```
+gsutil -m cp -r gs://gresearch/robotics/droid <your_local_path>
+```
+
+Then run the pre-processing script with the relevant options:
 ```
 usage: pre-processing.py [-h] [--dataset_dir DATASET_DIR] [--split_size SPLIT_SIZE]
                          [--last_step_shift LAST_STEP_SHIFT]
