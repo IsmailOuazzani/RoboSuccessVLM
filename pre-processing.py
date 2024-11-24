@@ -12,6 +12,8 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+CAMERAS = ["exterior_image_1_left", "exterior_image_2_left", "wrist_image_left"]
+
 
 def process_episode(
     episode: tf.data.Dataset,
@@ -36,20 +38,23 @@ def process_episode(
         ):
             subsequence.append(full_subsequence[j])
 
-        images = [step["observation"]["wrist_image_left"] for step in subsequence]
-        image = tf.concat(images, axis=1)
-        file_path = output_path / f"{instruction_hash}_{i}.png"
-        tf.io.write_file(file_path.as_posix(), tf.image.encode_png(image))
-        with open(db_manifest_path, "a") as f:
-            f.write(f'{file_path.absolute().as_posix()},"{language_instruction}",{i}\n')
-    return num_subsequences
+        for camera in CAMERAS:  # iterating over the cameras slows down the process
+            images = [step["observation"][camera] for step in subsequence]
+            image = tf.concat(images, axis=1)
+            file_path = output_path / f"{instruction_hash}_{camera}_{i}.png"
+            tf.io.write_file(file_path.as_posix(), tf.image.encode_png(image))
+            with open(db_manifest_path, "a") as f:
+                f.write(
+                    f'{file_path.absolute().as_posix()},"{language_instruction}",{camera},{i}\n'
+                )
+    return num_subsequences * len(CAMERAS)
 
 
 def make_new_manifest(reset: bool = True) -> Path:
     db_manifest_path = Path("manifest.csv")
     if reset and db_manifest_path.exists():
         db_manifest_path.unlink()
-    db_manifest_path.write_text("path,instruction,subsequence\n")
+    db_manifest_path.write_text("path,instruction,camera_name,subsequence\n")
     return db_manifest_path
 
 
@@ -62,7 +67,7 @@ def process_dataset(
 ) -> tuple[int, int]:
     episodes_processed = 0
     datapoints_created = 0
-    for episode in dataset:  # TODO: move to a process_dataset function
+    for episode in dataset:  # TODO: add tqdm progess bar
         first_step = tf.data.experimental.get_single_element(episode["steps"].take(1))
         language_instruction = (
             first_step["language_instruction"].numpy().decode("utf-8")
