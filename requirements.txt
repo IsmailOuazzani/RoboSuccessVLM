@@ -1,0 +1,5 @@
+tensorflow-datasets
+numpy
+pillow
+tensorflow
+pre-commit
