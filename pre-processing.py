@@ -16,7 +16,7 @@ CAMERAS = ["exterior_image_1_left", "exterior_image_2_left", "wrist_image_left"]
 
 
 def process_episode(
-    episode: tf.data.Dataset,
+    episode: dict,
     output_path: Path,
     language_instruction: str,
     db_manifest_path: Path,
@@ -29,7 +29,6 @@ def process_episode(
 
     for i in range(num_subsequences):
         start_idx = i * subsequence_size
-
         end_idx = start_idx + subsequence_size
         full_subsequence = steps[start_idx:end_idx]
         subsequence = []
@@ -67,7 +66,7 @@ def process_dataset(
 ) -> tuple[int, int]:
     episodes_processed = 0
     datapoints_created = 0
-    for episode in dataset:  # TODO: add tqdm progess bar
+    for episode in dataset:  # Process episodes one by one
         first_step = tf.data.experimental.get_single_element(episode["steps"].take(1))
         language_instruction = (
             first_step["language_instruction"].numpy().decode("utf-8")
@@ -88,36 +87,78 @@ def process_dataset(
     return episodes_processed, datapoints_created
 
 
+def shard_and_process_dataset(
+    dataset: tf.data.Dataset,
+    chunk_size: int,
+    db_manifest_path: Path,
+    num_subsequences: int,
+    steps_per_subsequence: int,
+    output_path: Path,
+):
+    total_episodes_processed = 0
+    total_datapoints_created = 0
+    chunk = []
+    for i, episode in enumerate(dataset):
+        chunk.append(episode)
+        if len(chunk) >= chunk_size:
+            # Process current chunk
+            episodes_processed, datapoints_created = process_dataset(
+                dataset=chunk,
+                db_manifest_path=db_manifest_path,
+                num_subsequences=num_subsequences,
+                steps_per_subsequence=steps_per_subsequence,
+                output_path=output_path,
+            )
+            total_episodes_processed += episodes_processed
+            total_datapoints_created += datapoints_created
+            logging.info(f"Processed chunk {i // chunk_size + 1}")
+            chunk = []  # Reset for the next chunk
+
+    # Process remaining episodes
+    if chunk:
+        episodes_processed, datapoints_created = process_dataset(
+            dataset=chunk,
+            db_manifest_path=db_manifest_path,
+            num_subsequences=num_subsequences,
+            steps_per_subsequence=steps_per_subsequence,
+            output_path=output_path,
+        )
+        total_episodes_processed += episodes_processed
+        total_datapoints_created += datapoints_created
+
+    return total_episodes_processed, total_datapoints_created
+
+
 if __name__ == "__main__":
     argument_parser = ArgumentParser()
     argument_parser.add_argument("--dataset_dir", type=str, default="/media/ismail/WDC")
-    argument_parser.add_argument("--split_size", type=int, default=500)
+    argument_parser.add_argument("--chunk_size", type=int, default=100)
     argument_parser.add_argument("--last_step_shift", type=int, default=5)
     argument_parser.add_argument("--num_subsequences", type=int, default=3)
     argument_parser.add_argument("--steps_per_subsequence", type=int, default=4)
     argument_parser.add_argument("--output_dir", type=str, default="data")
     args = argument_parser.parse_args()
 
+    # Stream the dataset
     dataset, dataset_info = tfds.load(
         "droid",
         data_dir=args.dataset_dir,
-        split=f"train[:{args.split_size}]",
+        split="train",
         with_info=True,
     )
-    dataset = dataset.prefetch(tf.data.AUTOTUNE)
     logging.info(dataset_info)
 
-    num_episodes = len(dataset)
-    episodes = dataset.take(num_episodes)
-    logging.info(f"Number of episodes in the dataset: {num_episodes}")
-
     db_manifest_path = make_new_manifest()
-    episodes_processed, datapoints_created = process_dataset(
-        dataset=episodes,
+
+    # Shard and process the dataset in chunks
+    total_episodes_processed, total_datapoints_created = shard_and_process_dataset(
+        dataset=dataset,
+        chunk_size=args.chunk_size,
         db_manifest_path=db_manifest_path,
         num_subsequences=args.num_subsequences,
         steps_per_subsequence=args.steps_per_subsequence,
         output_path=Path(args.output_dir),
     )
-    logging.info(f"Episodes processed: {episodes_processed}")
-    logging.info(f"Datapoints created: {datapoints_created}")
+
+    logging.info(f"Total episodes processed: {total_episodes_processed}")
+    logging.info(f"Total datapoints created: {total_datapoints_created}")
