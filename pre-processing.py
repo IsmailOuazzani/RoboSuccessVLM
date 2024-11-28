@@ -31,7 +31,6 @@ def process_episode(
 
     for i in range(num_subsequences):
         start_idx = i * subsequence_size
-
         end_idx = start_idx + subsequence_size
         full_subsequence = steps[start_idx:end_idx]
         subsequence = []
@@ -71,8 +70,8 @@ def make_new_manifest(reset: bool = True) -> Path:
     return db_manifest_path
 
 
-def process_dataset(
-    dataset: tf.data.Dataset,
+def process_dataset_chunk(
+    dataset_chunk: tf.data.Dataset,
     db_manifest_path: Path,
     num_subsequences: int,
     steps_per_subsequence: int,
@@ -80,7 +79,7 @@ def process_dataset(
 ) -> tuple[int, int]:
     episodes_processed = 0
     datapoints_created = 0
-    for episode in dataset:  # TODO: add tqdm progess bar
+    for episode in dataset_chunk:
         first_step = tf.data.experimental.get_single_element(episode["steps"].take(1))
         language_instruction = (
             first_step["language_instruction"].numpy().decode("utf-8")
@@ -88,7 +87,6 @@ def process_dataset(
         # at the moment 50k of the 76k success trajectories are annotated https://github.com/droid-dataset/droid/issues/3#issuecomment-2014178692
         logging.info(f"Instruction: {language_instruction}")
         if language_instruction:
-            # TODO: check for success and add to the manifest (apparently there are 15k failures in the dataset)
             datapoints_created += process_episode(
                 episode=episode,
                 output_path=output_path,
@@ -100,32 +98,65 @@ def process_dataset(
     return episodes_processed, datapoints_created
 
 
+def process_dataset(
+    dataset_name: str,
+    dataset_dir: str,
+    split_size: int,
+    db_manifest_path: Path,
+    num_subsequences: int,
+    steps_per_subsequence: int,
+    output_path: Path,
+):
+    full_dataset, dataset_info = tfds.load(
+        dataset_name,
+        data_dir=dataset_dir,
+        split="train",
+        with_info=True,
+    )
+    logging.info(f"Dataset info: {dataset_info}")
+    num_episodes = len(full_dataset)
+    num_chunks = num_episodes // split_size
+    logging.info(f"Number of episodes: {num_episodes}")
+    logging.info(f"Number of datasets chunks to process: {num_chunks}")
+
+    del full_dataset
+
+    total_episode_processed = 0
+    total_datapoints_created = 0
+
+    for i in range(num_chunks):
+        dataset_chunk = tfds.load(
+            dataset_name,
+            data_dir=dataset_dir,
+            split=f"train[{i * split_size}:{(i + 1) * split_size}]",
+        )
+        episodes_processed, datapoints_created = process_dataset_chunk(
+            dataset_chunk=dataset_chunk,
+            db_manifest_path=db_manifest_path,
+            num_subsequences=num_subsequences,
+            steps_per_subsequence=steps_per_subsequence,
+            output_path=output_path,
+        )
+        total_episode_processed += episodes_processed
+        total_datapoints_created += datapoints_created
+        logging.info(f"Chunk {i + 1}/{num_chunks} processed")
+
+
 if __name__ == "__main__":
     argument_parser = ArgumentParser()
     argument_parser.add_argument("--dataset_dir", type=str, default="/media/ismail/WDC")
-    argument_parser.add_argument("--split_size", type=int, default=10)
+    argument_parser.add_argument("--split_size", type=int, default=20)
     argument_parser.add_argument("--last_step_shift", type=int, default=5)
     argument_parser.add_argument("--num_subsequences", type=int, default=3)
-    argument_parser.add_argument("--steps_per_subsequence", type=int, default=4)
+    argument_parser.add_argument("--steps_per_subsequence", type=int, default=3)
     argument_parser.add_argument("--output_dir", type=str, default="data")
     args = argument_parser.parse_args()
 
-    dataset, dataset_info = tfds.load(
-        "droid",
-        data_dir=args.dataset_dir,
-        split=f"train[:{args.split_size}]",
-        with_info=True,
-    )
-    dataset = dataset.prefetch(tf.data.AUTOTUNE)
-    logging.info(dataset_info)
-
-    num_episodes = len(dataset)
-    episodes = dataset.take(num_episodes)
-    logging.info(f"Number of episodes in the dataset: {num_episodes}")
-
     db_manifest_path = make_new_manifest()
     episodes_processed, datapoints_created = process_dataset(
-        dataset=episodes,
+        dataset_name="droid",
+        dataset_dir=args.dataset_dir,
+        split_size=args.split_size,
         db_manifest_path=db_manifest_path,
         num_subsequences=args.num_subsequences,
         steps_per_subsequence=args.steps_per_subsequence,
