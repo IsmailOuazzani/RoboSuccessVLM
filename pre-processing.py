@@ -24,6 +24,20 @@ def process_episode(
     steps_per_subsequence: int,
     last_step_shift: int,
 ) -> int:
+    """Processes an episode by creating subsequences and saving images to disk.
+
+    Args:
+        episode (tf.data.Dataset): Episode to process.
+        output_path (Path): Path to save the images.
+        db_manifest_path (Path): Path to the database manifest file.
+        num_subsequences (int): Number of subsequences to create per episode.
+        steps_per_subsequence (int): Number of steps per subsequence to sample from.
+        last_step_shift (int): Shift for the last step in the subsequence (recording stops after the trajectory finishes).
+
+    Returns:
+        int: Number of datapoints created.
+    """
+
     steps = list(episode["steps"])
     language_instruction = steps[0]["language_instruction"].numpy().decode("utf-8")
     language_instruction_2 = steps[0]["language_instruction_2"].numpy().decode("utf-8")
@@ -65,41 +79,19 @@ def process_episode(
 
 
 def make_new_manifest(reset: bool = True) -> Path:
+    """Creates a new database manifest file.
+
+    Args:
+        reset (bool, optional): Delete the existing manifest file. Defaults to True.
+
+    Returns:
+        Path: Path to the new manifest file.
+    """
     db_manifest_path = Path("manifest.csv")
     if reset and db_manifest_path.exists():
         db_manifest_path.unlink()
     db_manifest_path.write_text("path,instruction,camera_name,subsequence,success\n")
     return db_manifest_path
-
-
-def process_dataset_chunk(
-    dataset_chunk: tf.data.Dataset,
-    db_manifest_path: Path,
-    num_subsequences: int,
-    steps_per_subsequence: int,
-    last_step_shift: int,
-    output_path: Path,
-) -> tuple[int, int]:
-    episodes_processed = 0
-    datapoints_created = 0
-    for episode in dataset_chunk:
-        first_step = tf.data.experimental.get_single_element(episode["steps"].take(1))
-        language_instruction = (
-            first_step["language_instruction"].numpy().decode("utf-8")
-        )
-        # at the moment 50k of the 76k success trajectories are annotated https://github.com/droid-dataset/droid/issues/3#issuecomment-2014178692
-        logging.info(f"Instruction: {language_instruction}")
-        if language_instruction:
-            datapoints_created += process_episode(
-                episode=episode,
-                output_path=output_path,
-                db_manifest_path=db_manifest_path,
-                num_subsequences=num_subsequences,
-                steps_per_subsequence=steps_per_subsequence,
-                last_step_shift=last_step_shift,
-            )
-            episodes_processed += 1
-    return episodes_processed, datapoints_created
 
 
 def process_dataset(
@@ -111,7 +103,23 @@ def process_dataset(
     steps_per_subsequence: int,
     last_step_shift: int,
     output_path: Path,
-):
+) -> tuple[int, int]:
+    """
+    Processes a dataset by splitting it into chunks and processing each episode within each chunk.
+
+    Arguments:
+        dataset_name (str): The name of the directory containing the dataset.
+        dataset_dir (str): The parent directory containing the dataset directory.
+        split_size (int): Number of episodes per dataset chunk to process.
+        db_manifest_path (Path): The path to the database manifest file.
+        num_subsequences (int): Number of subsequences to create per episode.
+        steps_per_subsequence (int): Number of steps per subsequence to sample from.
+        last_step_shift (int): Shift for the last step in the subsequence (recording stops after the trajectory finishes).
+        output_path (Path): Path where output data will be stored.
+
+    Returns:
+        tuple[int, int]: Total episodes processed and total datapoints created.
+    """
     full_dataset, dataset_info = tfds.load(
         dataset_name,
         data_dir=dataset_dir,
@@ -122,11 +130,11 @@ def process_dataset(
     num_episodes = len(full_dataset)
     num_chunks = num_episodes // split_size
     logging.info(f"Number of episodes: {num_episodes}")
-    logging.info(f"Number of datasets chunks to process: {num_chunks}")
+    logging.info(f"Number of dataset chunks to process: {num_chunks}")
 
     del full_dataset
 
-    total_episode_processed = 0
+    total_episodes_processed = 0
     total_datapoints_created = 0
 
     for i in range(num_chunks):
@@ -135,17 +143,33 @@ def process_dataset(
             data_dir=dataset_dir,
             split=f"train[{i * split_size}:{(i + 1) * split_size}]",
         )
-        episodes_processed, datapoints_created = process_dataset_chunk(
-            dataset_chunk=dataset_chunk,
-            db_manifest_path=db_manifest_path,
-            num_subsequences=num_subsequences,
-            steps_per_subsequence=steps_per_subsequence,
-            last_step_shift=last_step_shift,
-            output_path=output_path,
-        )
-        total_episode_processed += episodes_processed
+        episodes_processed = 0
+        datapoints_created = 0
+
+        for episode in dataset_chunk:
+            first_step = tf.data.experimental.get_single_element(
+                episode["steps"].take(1)
+            )
+            language_instruction = (
+                first_step["language_instruction"].numpy().decode("utf-8")
+            )
+            logging.info(f"Instruction: {language_instruction}")
+            if language_instruction:
+                datapoints_created += process_episode(
+                    episode=episode,
+                    output_path=output_path,
+                    db_manifest_path=db_manifest_path,
+                    num_subsequences=num_subsequences,
+                    steps_per_subsequence=steps_per_subsequence,
+                    last_step_shift=last_step_shift,
+                )
+                episodes_processed += 1
+
+        total_episodes_processed += episodes_processed
         total_datapoints_created += datapoints_created
         logging.info(f"Chunk {i + 1}/{num_chunks} processed")
+
+    return total_episodes_processed, total_datapoints_created
 
 
 if __name__ == "__main__":
