@@ -22,6 +22,7 @@ def process_episode(
     db_manifest_path: Path,
     num_subsequences: int,
     steps_per_subsequence: int,
+    last_step_shift: int,
 ) -> int:
     steps = list(episode["steps"])
     language_instruction = steps[0]["language_instruction"].numpy().decode("utf-8")
@@ -33,7 +34,10 @@ def process_episode(
     for i in range(num_subsequences):
         full_subsequence = steps[i * subsequence_size : (i + 1) * subsequence_size]
         indices = np.linspace(
-            0, len(full_subsequence) - 1, steps_per_subsequence, dtype=int
+            0,
+            len(full_subsequence) - 1 - last_step_shift,
+            steps_per_subsequence,
+            dtype=int,
         ).tolist()
         subsequence = [full_subsequence[j] for j in indices]
 
@@ -73,6 +77,7 @@ def process_dataset_chunk(
     db_manifest_path: Path,
     num_subsequences: int,
     steps_per_subsequence: int,
+    last_step_shift: int,
     output_path: Path,
 ) -> tuple[int, int]:
     episodes_processed = 0
@@ -91,6 +96,7 @@ def process_dataset_chunk(
                 db_manifest_path=db_manifest_path,
                 num_subsequences=num_subsequences,
                 steps_per_subsequence=steps_per_subsequence,
+                last_step_shift=last_step_shift,
             )
             episodes_processed += 1
     return episodes_processed, datapoints_created
@@ -103,6 +109,7 @@ def process_dataset(
     db_manifest_path: Path,
     num_subsequences: int,
     steps_per_subsequence: int,
+    last_step_shift: int,
     output_path: Path,
 ):
     full_dataset, dataset_info = tfds.load(
@@ -133,6 +140,7 @@ def process_dataset(
             db_manifest_path=db_manifest_path,
             num_subsequences=num_subsequences,
             steps_per_subsequence=steps_per_subsequence,
+            last_step_shift=last_step_shift,
             output_path=output_path,
         )
         total_episode_processed += episodes_processed
@@ -158,6 +166,7 @@ if __name__ == "__main__":
         db_manifest_path=db_manifest_path,
         num_subsequences=args.num_subsequences,
         steps_per_subsequence=args.steps_per_subsequence,
+        last_step_shift=args.last_step_shift,
         output_path=Path(args.output_dir),
     )
     logging.info(f"Episodes processed: {episodes_processed}")
