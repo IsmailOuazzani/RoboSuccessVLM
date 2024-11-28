@@ -18,12 +18,14 @@ CAMERAS = ["exterior_image_1_left", "exterior_image_2_left", "wrist_image_left"]
 def process_episode(
     episode: tf.data.Dataset,
     output_path: Path,
-    language_instruction: str,
     db_manifest_path: Path,
     num_subsequences: int,
     steps_per_subsequence: int,
 ) -> int:
     steps = list(episode["steps"])
+    language_instruction = steps[0]["language_instruction"].numpy().decode("utf-8")
+    language_instruction_2 = steps[0]["language_instruction_2"].numpy().decode("utf-8")
+    language_instruction_3 = steps[0]["language_instruction_3"].numpy().decode("utf-8")
     instruction_hash = sha256((f"{language_instruction}").encode()).hexdigest()[0:10]
     subsequence_size = len(steps) // num_subsequences
 
@@ -45,7 +47,18 @@ def process_episode(
             tf.io.write_file(file_path.as_posix(), tf.image.encode_png(image))
             with open(db_manifest_path, "a") as f:
                 f.write(
-                    f'{file_path.absolute().as_posix()},"{language_instruction}",{camera},{i}\n'
+                    ",".join(
+                        [
+                            file_path.absolute().as_posix(),
+                            language_instruction,
+                            language_instruction_2,
+                            language_instruction_3,
+                            camera,
+                            str(i),
+                            str(1 if i == num_subsequences - 1 else 0),
+                            "\n",
+                        ]
+                    )
                 )
     return num_subsequences * len(CAMERAS)
 
@@ -54,7 +67,7 @@ def make_new_manifest(reset: bool = True) -> Path:
     db_manifest_path = Path("manifest.csv")
     if reset and db_manifest_path.exists():
         db_manifest_path.unlink()
-    db_manifest_path.write_text("path,instruction,camera_name,subsequence\n")
+    db_manifest_path.write_text("path,instruction,camera_name,subsequence,success\n")
     return db_manifest_path
 
 
@@ -79,7 +92,6 @@ def process_dataset(
             datapoints_created += process_episode(
                 episode=episode,
                 output_path=output_path,
-                language_instruction=language_instruction,
                 db_manifest_path=db_manifest_path,
                 num_subsequences=num_subsequences,
                 steps_per_subsequence=steps_per_subsequence,
@@ -91,7 +103,7 @@ def process_dataset(
 if __name__ == "__main__":
     argument_parser = ArgumentParser()
     argument_parser.add_argument("--dataset_dir", type=str, default="/media/ismail/WDC")
-    argument_parser.add_argument("--split_size", type=int, default=500)
+    argument_parser.add_argument("--split_size", type=int, default=10)
     argument_parser.add_argument("--last_step_shift", type=int, default=5)
     argument_parser.add_argument("--num_subsequences", type=int, default=3)
     argument_parser.add_argument("--steps_per_subsequence", type=int, default=4)
