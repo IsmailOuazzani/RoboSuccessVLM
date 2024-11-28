@@ -26,7 +26,7 @@ def process_episode(
     language_instruction = steps[0]["language_instruction"].numpy().decode("utf-8")
     language_instruction_2 = steps[0]["language_instruction_2"].numpy().decode("utf-8")
     language_instruction_3 = steps[0]["language_instruction_3"].numpy().decode("utf-8")
-    instruction_hash = sha256((f"{language_instruction}").encode()).hexdigest()[0:10]
+    episode_id = sha256((f"{steps[0]}").encode()).hexdigest()[0:10]
     subsequence_size = len(steps) // num_subsequences
 
     for i in range(num_subsequences):
@@ -42,7 +42,7 @@ def process_episode(
         for camera in CAMERAS:  # iterating over the cameras slows down the process
             images = [step["observation"][camera] for step in subsequence]
             image = tf.concat(images, axis=1)
-            file_path = output_path / f"{instruction_hash}_{camera}_{i}.png"
+            file_path = output_path / f"{episode_id}_{camera}_{i}.png"
             tf.io.write_file(file_path.as_posix(), tf.image.encode_png(image))
             with open(db_manifest_path, "a") as f:
                 f.write(
