@@ -4,6 +4,7 @@ from argparse import ArgumentParser
 from hashlib import sha256
 from pathlib import Path
 
+import numpy as np
 import tensorflow as tf
 import tensorflow_datasets as tfds
 
@@ -30,14 +31,11 @@ def process_episode(
     subsequence_size = len(steps) // num_subsequences
 
     for i in range(num_subsequences):
-        start_idx = i * subsequence_size
-        end_idx = start_idx + subsequence_size
-        full_subsequence = steps[start_idx:end_idx]
-        subsequence = []
-        for j in range(
-            0, len(full_subsequence), len(full_subsequence) // steps_per_subsequence
-        ):
-            subsequence.append(full_subsequence[j])
+        full_subsequence = steps[i * subsequence_size : (i + 1) * subsequence_size]
+        indices = np.linspace(
+            0, len(full_subsequence) - 1, steps_per_subsequence, dtype=int
+        ).tolist()
+        subsequence = [full_subsequence[j] for j in indices]
 
         for camera in CAMERAS:  # iterating over the cameras slows down the process
             images = [step["observation"][camera] for step in subsequence]
