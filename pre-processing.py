@@ -112,22 +112,6 @@ def process_episode(
     return len(data_points)
 
 
-def make_new_manifest(reset: bool = True) -> Path:
-    """Creates a new database manifest file.
-
-    Args:
-        reset (bool, optional): Delete the existing manifest file. Defaults to True.
-
-    Returns:
-        Path: Path to the new manifest file.
-    """
-    db_manifest_path = Path("manifest.csv")
-    if reset and db_manifest_path.exists():
-        db_manifest_path.unlink()
-    db_manifest_path.write_text("path,instruction,camera_name,subsequence,success\n")
-    return db_manifest_path
-
-
 def process_dataset(
     dataset_name: str,
     dataset_dir: str,
@@ -216,7 +200,6 @@ if __name__ == "__main__":
     argument_parser.add_argument("--max_episodes", type=int, default=1000)
     args = argument_parser.parse_args()
 
-    # dataset_file_path = make_new_manifest()
     dataset_file_path = Path(f"{args.output_dir}/dataset.jsonl")
     dataset_file_path.unlink(missing_ok=True)
     dataset_file_path.touch()
@@ -253,4 +236,8 @@ if __name__ == "__main__":
             )
         )
 
-    # TODO: Write README file in dataset with parameters used
+    config_file = Path(args.output_dir) / "README"
+    with open(config_file, "w") as f:
+        f.write(json.dumps(vars(args), indent=4))
+
+    logging.info(f"Dataset created: {dataset_name}")
