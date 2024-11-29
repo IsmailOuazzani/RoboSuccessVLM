@@ -33,18 +33,5 @@ gsutil -m cp -r gs://gresearch/robotics/droid <your_local_path>
 
 Then run the pre-processing script with the relevant options:
 ```
-usage: pre-processing.py [-h] [--dataset_dir DATASET_DIR] [--split_size SPLIT_SIZE]
-                         [--last_step_shift LAST_STEP_SHIFT]
-                         [--num_subsequences NUM_SUBSEQUENCES]
-                         [--steps_per_subsequence STEPS_PER_SUBSEQUENCE]
-                         [--output_dir OUTPUT_DIR]
-
-options:
-  -h, --help            show this help message and exit
-  --dataset_dir DATASET_DIR
-  --split_size SPLIT_SIZE
-  --last_step_shift LAST_STEP_SHIFT
-  --num_subsequences NUM_SUBSEQUENCES
-  --steps_per_subsequence STEPS_PER_SUBSEQUENCE
-  --output_dir OUTPUT_DIR
+pre-processing.py --help
 ```

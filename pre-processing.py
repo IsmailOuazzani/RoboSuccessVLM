@@ -191,13 +191,45 @@ def process_dataset(
 
 if __name__ == "__main__":
     argument_parser = ArgumentParser()
-    argument_parser.add_argument("--dataset_dir", type=str, default="/media/ismail/WDC")
-    argument_parser.add_argument("--split_size", type=int, default=20)
-    argument_parser.add_argument("--last_step_shift", type=int, default=5)
-    argument_parser.add_argument("--num_subsequences", type=int, default=3)
-    argument_parser.add_argument("--steps_per_subsequence", type=int, default=3)
-    argument_parser.add_argument("--output_dir", type=str, default="data")
-    argument_parser.add_argument("--max_episodes", type=int, default=1000)
+    argument_parser.add_argument(
+        "--dataset_dir",
+        type=str,
+        default="/media/ismail/WDC",
+        help="Path to the parent directory of the dataset.",
+    )
+    argument_parser.add_argument(
+        "--chunk_size",
+        type=int,
+        default=20,
+        help="Number of episodes per dataset chunk to process.",
+    )
+    argument_parser.add_argument(
+        "--last_step_shift",
+        type=int,
+        default=5,
+        help="Shift for the last step in the subsequence (since the video usually goes on after the robot finished).",
+    )
+    argument_parser.add_argument(
+        "--num_subsequences",
+        type=int,
+        default=3,
+        help="Number of subsequences to create per episode.",
+    )
+    argument_parser.add_argument(
+        "--steps_per_subsequence",
+        type=int,
+        default=3,
+        help="Number of frames per subsequence to sample.",
+    )
+    argument_parser.add_argument(
+        "--output_dir", type=str, default="data", help="Path to the output directory."
+    )
+    argument_parser.add_argument(
+        "--max_episodes",
+        type=int,
+        default=1000,
+        help="Maximum number of episodes to process.",
+    )
     args = argument_parser.parse_args()
 
     dataset_file_path = Path(f"{args.output_dir}/dataset.jsonl")
