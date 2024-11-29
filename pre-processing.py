@@ -137,6 +137,7 @@ def process_dataset(
     steps_per_subsequence: int,
     last_step_shift: int,
     output_path: Path,
+    max_episodes: int,
 ) -> tuple[int, int]:
     """
     Processes a dataset by splitting it into chunks and processing each episode within each chunk.
@@ -150,7 +151,7 @@ def process_dataset(
         steps_per_subsequence (int): Number of steps per subsequence to sample from.
         last_step_shift (int): Shift for the last step in the subsequence (recording stops after the trajectory finishes).
         output_path (Path): Path where output data will be stored.
-
+        max_episodes (int): Maximum number of episodes to process.
     Returns:
         tuple[int, int]: Total episodes processed and total datapoints created.
     """
@@ -197,7 +198,8 @@ def process_dataset(
                     last_step_shift=last_step_shift,
                 )
                 num_episodes_processed += 1
-
+                if num_episodes_processed >= max_episodes:
+                    return num_episodes_processed, num_datapoints_created
         logging.info(f"Chunk {i + 1}/{num_chunks} processed")
 
     return num_episodes_processed, num_datapoints_created
@@ -211,7 +213,7 @@ if __name__ == "__main__":
     argument_parser.add_argument("--num_subsequences", type=int, default=3)
     argument_parser.add_argument("--steps_per_subsequence", type=int, default=3)
     argument_parser.add_argument("--output_dir", type=str, default="data")
-    # TODO: Add argument for max number of episodes to process
+    argument_parser.add_argument("--max_episodes", type=int, default=1000)
     args = argument_parser.parse_args()
 
     # dataset_file_path = make_new_manifest()
@@ -228,6 +230,7 @@ if __name__ == "__main__":
         steps_per_subsequence=args.steps_per_subsequence,
         last_step_shift=args.last_step_shift,
         output_path=Path(args.output_dir),
+        max_episodes=args.max_episodes,
     )
     logging.info(f"Episodes processed: {episodes_processed}")
     logging.info(f"Datapoints created: {datapoints_created}")
@@ -235,16 +238,19 @@ if __name__ == "__main__":
     dataset_name = f"droid_{args.num_subsequences}_{args.steps_per_subsequence}_{args.last_step_shift}_{datapoints_created}"
     meta_file_path = f"{dataset_name}.json"
     with open(meta_file_path, "w") as f:
-        json.dump(
-            {
-                dataset_name: {
-                    "root": args.output_dir,
-                    "annotation": dataset_file_path,
-                    "repeat_time": 1,
-                    "length": datapoints_created,
+        f.write(
+            json.dumps(
+                {
+                    dataset_name: {
+                        "root": args.output_dir,
+                        "annotation": dataset_file_path.relative_to(
+                            args.output_dir
+                        ).as_posix(),
+                        "repeat_time": 1,
+                        "length": datapoints_created,
+                    }
                 }
-            },
-            f,
+            )
         )
 
     # TODO: Write README file in dataset with parameters used
