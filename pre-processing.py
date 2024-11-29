@@ -115,7 +115,7 @@ def process_episode(
 def process_dataset(
     dataset_name: str,
     dataset_dir: str,
-    split_size: int,
+    chunk_size: int,
     dataset_file_path: Path,
     num_subsequences: int,
     steps_per_subsequence: int,
@@ -129,7 +129,7 @@ def process_dataset(
     Arguments:
         dataset_name (str): The name of the directory containing the dataset.
         dataset_dir (str): The parent directory containing the dataset directory.
-        split_size (int): Number of episodes per dataset chunk to process.
+        chunk_size (int): Number of episodes per dataset chunk to process.
         dataset_file_path (Path): The path to the dataset manifest file.
         num_subsequences (int): Number of subsequences to create per episode.
         steps_per_subsequence (int): Number of steps per subsequence to sample from.
@@ -147,7 +147,7 @@ def process_dataset(
     )
     logging.info(f"Dataset info: {dataset_info}")
     num_episodes = len(full_dataset)
-    num_chunks = num_episodes // split_size
+    num_chunks = num_episodes // chunk_size
     logging.info(f"Number of episodes: {num_episodes}")
     logging.info(f"Number of dataset chunks to process: {num_chunks}")
 
@@ -160,7 +160,7 @@ def process_dataset(
         dataset_chunk = tfds.load(
             dataset_name,
             data_dir=dataset_dir,
-            split=f"train[{i * split_size}:{(i + 1) * split_size}]",
+            split=f"train[{i * chunk_size}:{(i + 1) * chunk_size}]",
         )
 
         for episode in dataset_chunk:
@@ -239,7 +239,7 @@ if __name__ == "__main__":
     episodes_processed, datapoints_created = process_dataset(
         dataset_name="droid",
         dataset_dir=args.dataset_dir,
-        split_size=args.split_size,
+        chunk_size=args.chunk_size,
         dataset_file_path=dataset_file_path,
         num_subsequences=args.num_subsequences,
         steps_per_subsequence=args.steps_per_subsequence,
