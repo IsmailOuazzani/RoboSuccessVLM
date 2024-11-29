@@ -1,7 +1,8 @@
+import json
 import logging
 import os
 from argparse import ArgumentParser
-from hashlib import sha256
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -16,10 +17,36 @@ logger.setLevel(logging.INFO)
 CAMERAS = ["exterior_image_1_left", "exterior_image_2_left", "wrist_image_left"]
 
 
+@dataclass
+class InternVLSingleImageData:
+    id: int
+    image: str
+    image_width: int
+    image_height: int
+    instruction: str
+    success: bool
+
+    def to_jsonl(self):
+        return {
+            "id": self.id,
+            "image": self.image,
+            "width": self.image_width,
+            "height": self.image_height,
+            "conversations": [
+                {
+                    "from": "human",
+                    "value": f'<image>\nHas the following task been achieved:"{self.instruction}"? Answer with "yes" or "no" only.',
+                },
+                {"from": "gpt", "value": "yes" if self.success else "no"},
+            ],
+        }
+
+
 def process_episode(
     episode: tf.data.Dataset,
+    episode_id: int,
     output_path: Path,
-    db_manifest_path: Path,
+    dataset_file_path: Path,
     num_subsequences: int,
     steps_per_subsequence: int,
     last_step_shift: int,
@@ -28,8 +55,9 @@ def process_episode(
 
     Args:
         episode (tf.data.Dataset): Episode to process.
+        episode_id (int): Episode ID.
         output_path (Path): Path to save the images.
-        db_manifest_path (Path): Path to the database manifest file.
+        dataset_file_path (Path): Path to the dataset manifest file.
         num_subsequences (int): Number of subsequences to create per episode.
         steps_per_subsequence (int): Number of steps per subsequence to sample from.
         last_step_shift (int): Shift for the last step in the subsequence (recording stops after the trajectory finishes).
@@ -39,11 +67,14 @@ def process_episode(
     """
 
     steps = list(episode["steps"])
-    language_instruction = steps[0]["language_instruction"].numpy().decode("utf-8")
-    language_instruction_2 = steps[0]["language_instruction_2"].numpy().decode("utf-8")
-    language_instruction_3 = steps[0]["language_instruction_3"].numpy().decode("utf-8")
-    episode_id = sha256((f"{steps[0]}").encode()).hexdigest()[0:10]
+    language_instructions = [
+        steps[0]["language_instruction"].numpy().decode("utf-8"),
+        steps[0]["language_instruction_2"].numpy().decode("utf-8"),
+        steps[0]["language_instruction_3"].numpy().decode("utf-8"),
+    ]
     subsequence_size = len(steps) // num_subsequences
+
+    data_points: list[InternVLSingleImageData] = []
 
     for i in range(num_subsequences):
         full_subsequence = steps[i * subsequence_size : (i + 1) * subsequence_size]
@@ -58,24 +89,27 @@ def process_episode(
         for camera in CAMERAS:  # iterating over the cameras slows down the process
             images = [step["observation"][camera] for step in subsequence]
             image = tf.concat(images, axis=1)
-            file_path = output_path / f"{episode_id}_{camera}_{i}.png"
+            file_path = output_path / "images" / f"{episode_id}_{camera}_{i}.png"
             tf.io.write_file(file_path.as_posix(), tf.image.encode_png(image))
-            with open(db_manifest_path, "a") as f:
-                f.write(
-                    ",".join(
-                        [
-                            file_path.absolute().as_posix(),
-                            language_instruction,
-                            language_instruction_2,
-                            language_instruction_3,
-                            camera,
-                            str(i),
-                            str(1 if i == num_subsequences - 1 else 0),
-                            "\n",
-                        ]
+
+            for language_instruction in language_instructions:
+                if language_instruction != "":
+                    data_points.append(
+                        InternVLSingleImageData(
+                            id=episode_id + len(data_points),
+                            image=file_path.relative_to(output_path).as_posix(),
+                            image_width=image.shape[1],
+                            image_height=image.shape[0],
+                            instruction=language_instruction,
+                            success=True if i == num_subsequences - 1 else False,
+                        )
                     )
-                )
-    return num_subsequences * len(CAMERAS)
+
+    with open(dataset_file_path, "a") as f:
+        for data_point in data_points:
+            f.write(json.dumps(data_point.to_jsonl()) + "\n")
+
+    return len(data_points)
 
 
 def make_new_manifest(reset: bool = True) -> Path:
@@ -98,7 +132,7 @@ def process_dataset(
     dataset_name: str,
     dataset_dir: str,
     split_size: int,
-    db_manifest_path: Path,
+    dataset_file_path: Path,
     num_subsequences: int,
     steps_per_subsequence: int,
     last_step_shift: int,
@@ -111,7 +145,7 @@ def process_dataset(
         dataset_name (str): The name of the directory containing the dataset.
         dataset_dir (str): The parent directory containing the dataset directory.
         split_size (int): Number of episodes per dataset chunk to process.
-        db_manifest_path (Path): The path to the database manifest file.
+        dataset_file_path (Path): The path to the dataset manifest file.
         num_subsequences (int): Number of subsequences to create per episode.
         steps_per_subsequence (int): Number of steps per subsequence to sample from.
         last_step_shift (int): Shift for the last step in the subsequence (recording stops after the trajectory finishes).
@@ -134,8 +168,8 @@ def process_dataset(
 
     del full_dataset
 
-    total_episodes_processed = 0
-    total_datapoints_created = 0
+    num_episodes_processed = 0
+    num_datapoints_created = 0
 
     for i in range(num_chunks):
         dataset_chunk = tfds.load(
@@ -143,8 +177,6 @@ def process_dataset(
             data_dir=dataset_dir,
             split=f"train[{i * split_size}:{(i + 1) * split_size}]",
         )
-        episodes_processed = 0
-        datapoints_created = 0
 
         for episode in dataset_chunk:
             first_step = tf.data.experimental.get_single_element(
@@ -155,21 +187,20 @@ def process_dataset(
             )
             logging.info(f"Instruction: {language_instruction}")
             if language_instruction:
-                datapoints_created += process_episode(
+                num_datapoints_created += process_episode(
+                    episode_id=num_datapoints_created,
                     episode=episode,
                     output_path=output_path,
-                    db_manifest_path=db_manifest_path,
+                    dataset_file_path=dataset_file_path,
                     num_subsequences=num_subsequences,
                     steps_per_subsequence=steps_per_subsequence,
                     last_step_shift=last_step_shift,
                 )
-                episodes_processed += 1
+                num_episodes_processed += 1
 
-        total_episodes_processed += episodes_processed
-        total_datapoints_created += datapoints_created
         logging.info(f"Chunk {i + 1}/{num_chunks} processed")
 
-    return total_episodes_processed, total_datapoints_created
+    return num_episodes_processed, num_datapoints_created
 
 
 if __name__ == "__main__":
@@ -180,14 +211,19 @@ if __name__ == "__main__":
     argument_parser.add_argument("--num_subsequences", type=int, default=3)
     argument_parser.add_argument("--steps_per_subsequence", type=int, default=3)
     argument_parser.add_argument("--output_dir", type=str, default="data")
+    # TODO: Add argument for max number of episodes to process
     args = argument_parser.parse_args()
 
-    db_manifest_path = make_new_manifest()
+    # dataset_file_path = make_new_manifest()
+    dataset_file_path = Path(f"{args.output_dir}/dataset.jsonl")
+    dataset_file_path.unlink(missing_ok=True)
+    dataset_file_path.touch()
+
     episodes_processed, datapoints_created = process_dataset(
         dataset_name="droid",
         dataset_dir=args.dataset_dir,
         split_size=args.split_size,
-        db_manifest_path=db_manifest_path,
+        dataset_file_path=dataset_file_path,
         num_subsequences=args.num_subsequences,
         steps_per_subsequence=args.steps_per_subsequence,
         last_step_shift=args.last_step_shift,
@@ -195,3 +231,20 @@ if __name__ == "__main__":
     )
     logging.info(f"Episodes processed: {episodes_processed}")
     logging.info(f"Datapoints created: {datapoints_created}")
+
+    dataset_name = f"droid_{args.num_subsequences}_{args.steps_per_subsequence}_{args.last_step_shift}_{datapoints_created}"
+    meta_file_path = f"{dataset_name}.json"
+    with open(meta_file_path, "w") as f:
+        json.dump(
+            {
+                dataset_name: {
+                    "root": args.output_dir,
+                    "annotation": dataset_file_path,
+                    "repeat_time": 1,
+                    "length": datapoints_created,
+                }
+            },
+            f,
+        )
+
+    # TODO: Write README file in dataset with parameters used
