@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy as np
 import tensorflow as tf
 import tensorflow_datasets as tfds
+from tqdm import tqdm
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
@@ -149,42 +150,44 @@ def process_dataset(
     num_episodes = len(full_dataset)
     num_chunks = num_episodes // chunk_size
     logging.info(f"Number of episodes: {num_episodes}")
-    logging.info(f"Number of dataset chunks to process: {num_chunks}")
+    logging.info(f"Number of dataset chunks: {num_chunks}")
 
     del full_dataset
 
     num_episodes_processed = 0
     num_datapoints_created = 0
 
-    for i in range(num_chunks):
-        dataset_chunk = tfds.load(
-            dataset_name,
-            data_dir=dataset_dir,
-            split=f"train[{i * chunk_size}:{(i + 1) * chunk_size}]",
-        )
+    with tqdm(total=max_episodes, desc="Processing Episodes") as pbar:
+        for i in range(num_chunks):
+            dataset_chunk = tfds.load(
+                dataset_name,
+                data_dir=dataset_dir,
+                split=f"train[{i * chunk_size}:{(i + 1) * chunk_size}]",
+            )
 
-        for episode in dataset_chunk:
-            first_step = tf.data.experimental.get_single_element(
-                episode["steps"].take(1)
-            )
-            language_instruction = (
-                first_step["language_instruction"].numpy().decode("utf-8")
-            )
-            logging.info(f"Instruction: {language_instruction}")
-            if language_instruction:
-                num_datapoints_created += process_episode(
-                    episode_id=num_datapoints_created,
-                    episode=episode,
-                    output_path=output_path,
-                    dataset_file_path=dataset_file_path,
-                    num_subsequences=num_subsequences,
-                    steps_per_subsequence=steps_per_subsequence,
-                    last_step_shift=last_step_shift,
+            for episode in dataset_chunk:
+                first_step = tf.data.experimental.get_single_element(
+                    episode["steps"].take(1)
                 )
-                num_episodes_processed += 1
-                if num_episodes_processed >= max_episodes:
-                    return num_episodes_processed, num_datapoints_created
-        logging.info(f"Chunk {i + 1}/{num_chunks} processed")
+                language_instruction = (
+                    first_step["language_instruction"].numpy().decode("utf-8")
+                )
+                logging.debug(f"Instruction: {language_instruction}")
+                if language_instruction:
+                    num_datapoints_created += process_episode(
+                        episode_id=num_datapoints_created,
+                        episode=episode,
+                        output_path=output_path,
+                        dataset_file_path=dataset_file_path,
+                        num_subsequences=num_subsequences,
+                        steps_per_subsequence=steps_per_subsequence,
+                        last_step_shift=last_step_shift,
+                    )
+                    num_episodes_processed += 1
+                    pbar.update(1)
+                    if num_episodes_processed >= max_episodes:
+                        return num_episodes_processed, num_datapoints_created
+            logging.debug(f"Chunk {i + 1}/{num_chunks} processed")
 
     return num_episodes_processed, num_datapoints_created
 
@@ -228,13 +231,15 @@ if __name__ == "__main__":
         "--max_episodes",
         type=int,
         default=1000,
-        help="Maximum number of episodes to process.",
+        help="Maximum number of episodes to process. Episodes without instructions are skipped and do not count.",
     )
     args = argument_parser.parse_args()
 
     dataset_file_path = Path(f"{args.output_dir}/dataset.jsonl")
     dataset_file_path.unlink(missing_ok=True)
     dataset_file_path.touch()
+
+    logging.getLogger("absl").setLevel(logging.WARNING)
 
     episodes_processed, datapoints_created = process_dataset(
         dataset_name="droid",
