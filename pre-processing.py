@@ -19,27 +19,34 @@ CAMERAS = ["exterior_image_1_left", "exterior_image_2_left", "wrist_image_left"]
 
 
 @dataclass
-class InternVLSingleImageData:
+class InternVLDataPoint:
     id: int
-    image: str
-    image_width: int
-    image_height: int
+    image: list[str]
+    width_list: list[int]
+    height_list: list[int]
     instruction: str
-    success: bool
+    success_list: list[bool]
 
     def to_jsonl(self):
+        conversations = []
+        print(self.image)
+        print(self.success_list)
+        for i in range(len(self.image)):
+            conversations.extend(
+                [
+                    {
+                        "from": "human",
+                        "value": f'<image>\nHas the following task been achieved:"{self.instruction}"? Answer with "yes" or "no" only.',
+                    },
+                    {"from": "gpt", "value": "yes" if self.success_list[i] else "no"},
+                ]
+            )
         return {
             "id": self.id,
             "image": self.image,
-            "width": self.image_width,
-            "height": self.image_height,
-            "conversations": [
-                {
-                    "from": "human",
-                    "value": f'<image>\nHas the following task been achieved:"{self.instruction}"? Answer with "yes" or "no" only.',
-                },
-                {"from": "gpt", "value": "yes" if self.success else "no"},
-            ],
+            "width_list": self.width_list,
+            "height_list": self.height_list,
+            "conversations": conversations,
         }
 
 
@@ -51,6 +58,7 @@ def process_episode(
     num_subsequences: int,
     steps_per_subsequence: int,
     last_step_shift: int,
+    conversation_format: str,
 ) -> int:
     """Processes an episode by creating subsequences and saving images to disk.
 
@@ -62,6 +70,7 @@ def process_episode(
         num_subsequences (int): Number of subsequences to create per episode.
         steps_per_subsequence (int): Number of steps per subsequence to sample from.
         last_step_shift (int): Shift for the last step in the subsequence (recording stops after the trajectory finishes).
+        conversation_format (str): The format of the conversation.
 
     Returns:
         int: Number of datapoints created.
@@ -75,36 +84,94 @@ def process_episode(
     ]
     subsequence_size = len(steps) // num_subsequences
 
-    data_points: list[InternVLSingleImageData] = []
+    data_points: list[InternVLDataPoint] = []
 
-    for i in range(num_subsequences):
-        full_subsequence = steps[i * subsequence_size : (i + 1) * subsequence_size]
-        indices = np.linspace(
-            0,
-            len(full_subsequence) - 1 - last_step_shift,
-            steps_per_subsequence,
-            dtype=int,
-        ).tolist()
-        subsequence = [full_subsequence[j] for j in indices]
+    if conversation_format == "single_turn":
+        for i in range(num_subsequences):
+            full_subsequence = steps[i * subsequence_size : (i + 1) * subsequence_size]
+            indices = np.linspace(
+                0,
+                len(full_subsequence) - 1 - last_step_shift,
+                steps_per_subsequence,
+                dtype=int,
+            ).tolist()
+            subsequence = [full_subsequence[j] for j in indices]
 
-        for camera in CAMERAS:  # iterating over the cameras slows down the process
-            images = [step["observation"][camera] for step in subsequence]
-            image = tf.concat(images, axis=1)
-            file_path = output_path / "images" / f"{episode_id}_{camera}_{i}.png"
-            tf.io.write_file(file_path.as_posix(), tf.image.encode_png(image))
+            for camera in CAMERAS:  # iterating over the cameras slows down the process
+                images = [step["observation"][camera] for step in subsequence]
+                image = tf.concat(images, axis=1)
+                file_path = output_path / "images" / f"{episode_id}_{camera}_{i}.png"
+                tf.io.write_file(file_path.as_posix(), tf.image.encode_png(image))
 
-            for language_instruction in language_instructions:
-                if language_instruction != "":
-                    data_points.append(
-                        InternVLSingleImageData(
-                            id=episode_id + len(data_points),
-                            image=file_path.relative_to(output_path).as_posix(),
-                            image_width=image.shape[1],
-                            image_height=image.shape[0],
-                            instruction=language_instruction,
-                            success=True if i == num_subsequences - 1 else False,
+                for language_instruction in language_instructions:
+                    if language_instruction != "":
+                        data_points.append(
+                            InternVLDataPoint(
+                                id=episode_id + len(data_points),
+                                image=[file_path.relative_to(output_path).as_posix()],
+                                width_list=[image.shape[1]],
+                                height_list=[image.shape[0]],
+                                instruction=language_instruction,
+                                success_list=[
+                                    True if i == num_subsequences - 1 else False
+                                ],
+                            )
                         )
+    elif conversation_format == "multi_turn":
+        for language_instruction in language_instructions:
+            if language_instruction != "":
+                for camera in CAMERAS:
+                    subsequence_processed = []
+                    for i in range(num_subsequences):
+                        full_subsequence = steps[
+                            i * subsequence_size : (i + 1) * subsequence_size
+                        ]
+                        indices = np.linspace(
+                            0,
+                            len(full_subsequence) - 1 - last_step_shift,
+                            steps_per_subsequence,
+                            dtype=int,
+                        ).tolist()
+                        subsequence = [full_subsequence[j] for j in indices]
+
+                        images = [step["observation"][camera] for step in subsequence]
+                        image = tf.concat(images, axis=1)
+                        file_path = (
+                            output_path / "images" / f"{episode_id}_{camera}_{i}.png"
+                        )
+                        tf.io.write_file(
+                            file_path.as_posix(), tf.image.encode_png(image)
+                        )
+
+                        subsequence_processed.append(
+                            {
+                                "image": file_path.relative_to(output_path).as_posix(),
+                                "width": image.shape[1],
+                                "height": image.shape[0],
+                            }
+                        )
+                data_points.append(
+                    InternVLDataPoint(
+                        id=episode_id + len(data_points),
+                        image=[
+                            subsequence["image"]
+                            for subsequence in subsequence_processed
+                        ],
+                        width_list=[
+                            subsequence["width"]
+                            for subsequence in subsequence_processed
+                        ],
+                        height_list=[
+                            subsequence["height"]
+                            for subsequence in subsequence_processed
+                        ],
+                        instruction=language_instruction,
+                        success_list=[
+                            True if i == num_subsequences - 1 else False
+                            for i in range(num_subsequences)
+                        ],
                     )
+                )
 
     with open(dataset_file_path, "a") as f:
         for data_point in data_points:
@@ -123,6 +190,7 @@ def process_dataset(
     last_step_shift: int,
     output_path: Path,
     max_episodes: int,
+    conversation_format: str,
 ) -> tuple[int, int]:
     """
     Processes a dataset by splitting it into chunks and processing each episode within each chunk.
@@ -137,6 +205,7 @@ def process_dataset(
         last_step_shift (int): Shift for the last step in the subsequence (recording stops after the trajectory finishes).
         output_path (Path): Path where output data will be stored.
         max_episodes (int): Maximum number of episodes to process.
+        conversation_format (str): The format of the conversation.
     Returns:
         tuple[int, int]: Total episodes processed and total datapoints created.
     """
@@ -182,6 +251,7 @@ def process_dataset(
                         num_subsequences=num_subsequences,
                         steps_per_subsequence=steps_per_subsequence,
                         last_step_shift=last_step_shift,
+                        conversation_format=conversation_format,
                     )
                     num_episodes_processed += 1
                     pbar.update(1)
@@ -209,7 +279,7 @@ if __name__ == "__main__":
     argument_parser.add_argument(
         "--last_step_shift",
         type=int,
-        default=5,
+        default=1,
         help="Shift for the last step in the subsequence (since the video usually goes on after the robot finished).",
     )
     argument_parser.add_argument(
@@ -233,6 +303,14 @@ if __name__ == "__main__":
         default=1000,
         help="Maximum number of episodes to process. Episodes without instructions are skipped and do not count.",
     )
+    argument_parser.add_argument(
+        "--conversation_format",
+        type=str,
+        default="single_turn",
+        choices={"single_turn", "multi_turn"},
+        help="Format of the conversation to use.",
+    )
+
     args = argument_parser.parse_args()
 
     dataset_file_path = Path(f"{args.output_dir}/dataset.jsonl")
@@ -251,11 +329,12 @@ if __name__ == "__main__":
         last_step_shift=args.last_step_shift,
         output_path=Path(args.output_dir),
         max_episodes=args.max_episodes,
+        conversation_format=args.conversation_format,
     )
     logging.info(f"Episodes processed: {episodes_processed}")
     logging.info(f"Datapoints created: {datapoints_created}")
 
-    dataset_name = f"droid_{args.num_subsequences}_{args.steps_per_subsequence}_{args.last_step_shift}_{datapoints_created}"
+    dataset_name = f"droid_{args.num_subsequences}_{args.steps_per_subsequence}_{args.last_step_shift}_{args.conversation_format}_{datapoints_created}"
     meta_file_path = f"{dataset_name}.json"
     with open(meta_file_path, "w") as f:
         f.write(
