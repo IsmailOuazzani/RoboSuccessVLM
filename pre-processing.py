@@ -26,21 +26,35 @@ class InternVLDataPoint:
     height_list: list[int]
     instruction: str
     success_list: list[bool]
+    combined: bool = False
 
     def to_jsonl(self):
         conversations = []
-        print(self.image)
-        print(self.success_list)
-        for i in range(len(self.image)):
+
+        if self.combined:
             conversations.extend(
                 [
                     {
                         "from": "human",
-                        "value": f'<image>\nHas the following task been achieved:"{self.instruction}"? Answer with "yes" or "no" only.',
+                        "value": f'{" ".join(["Step "+ str(i)+": <image>" for i in range(len(self.image))])}\nHas the following task been achieved:"{self.instruction}"? Answer with "yes" or "no" only.',
                     },
-                    {"from": "gpt", "value": "yes" if self.success_list[i] else "no"},
+                    {"from": "gpt", "value": "yes" if all(self.success_list) else "no"},
                 ]
             )
+        else:
+            for i in range(len(self.image)):
+                conversations.extend(
+                    [
+                        {
+                            "from": "human",
+                            "value": f'<image>\nHas the following task been achieved:"{self.instruction}"? Answer with "yes" or "no" only.',
+                        },
+                        {
+                            "from": "gpt",
+                            "value": "yes" if self.success_list[i] else "no",
+                        },
+                    ]
+                )
         return {
             "id": self.id,
             "image": self.image,
@@ -117,7 +131,7 @@ def process_episode(
                                 ],
                             )
                         )
-    elif conversation_format == "multi_turn":
+    else:
         for language_instruction in language_instructions:
             if language_instruction != "":
                 for camera in CAMERAS:
@@ -150,28 +164,50 @@ def process_episode(
                                 "height": image.shape[0],
                             }
                         )
-                data_points.append(
-                    InternVLDataPoint(
-                        id=episode_id + len(data_points),
-                        image=[
-                            subsequence["image"]
-                            for subsequence in subsequence_processed
-                        ],
-                        width_list=[
-                            subsequence["width"]
-                            for subsequence in subsequence_processed
-                        ],
-                        height_list=[
-                            subsequence["height"]
-                            for subsequence in subsequence_processed
-                        ],
-                        instruction=language_instruction,
-                        success_list=[
-                            True if i == num_subsequences - 1 else False
-                            for i in range(num_subsequences)
-                        ],
+                if conversation_format == "single_turn_combined":
+                    data_points.append(
+                        InternVLDataPoint(
+                            id=episode_id + len(data_points),
+                            image=[
+                                subsequence["image"]
+                                for subsequence in subsequence_processed
+                            ],
+                            width_list=[
+                                subsequence["width"]
+                                for subsequence in subsequence_processed
+                            ],
+                            height_list=[
+                                subsequence["height"]
+                                for subsequence in subsequence_processed
+                            ],
+                            instruction=language_instruction,
+                            success_list=[True],
+                            combined=True,
+                        )
                     )
-                )
+                elif conversation_format == "multi_turn":
+                    data_points.append(
+                        InternVLDataPoint(
+                            id=episode_id + len(data_points),
+                            image=[
+                                subsequence["image"]
+                                for subsequence in subsequence_processed
+                            ],
+                            width_list=[
+                                subsequence["width"]
+                                for subsequence in subsequence_processed
+                            ],
+                            height_list=[
+                                subsequence["height"]
+                                for subsequence in subsequence_processed
+                            ],
+                            instruction=language_instruction,
+                            success_list=[
+                                True if i == num_subsequences - 1 else False
+                                for i in range(num_subsequences)
+                            ],
+                        )
+                    )
 
     with open(dataset_file_path, "a") as f:
         for data_point in data_points:
@@ -307,7 +343,7 @@ if __name__ == "__main__":
         "--conversation_format",
         type=str,
         default="single_turn",
-        choices={"single_turn", "multi_turn"},
+        choices={"single_turn", "single_turn_combined", "multi_turn"},
         help="Format of the conversation to use.",
     )
 
