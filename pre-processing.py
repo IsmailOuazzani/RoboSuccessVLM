@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import zipfile
 from argparse import ArgumentParser
 from dataclasses import dataclass
 from pathlib import Path
@@ -346,6 +347,11 @@ if __name__ == "__main__":
         choices={"single_turn", "single_turn_combined", "multi_turn"},
         help="Format of the conversation to use.",
     )
+    argument_parser.add_argument(
+        "--export_dataset",
+        action="store_true",
+        help="Export the dataset to a zip file.",
+    )
 
     args = argument_parser.parse_args()
 
@@ -393,3 +399,13 @@ if __name__ == "__main__":
         f.write(json.dumps(vars(args), indent=4))
 
     logging.info(f"Dataset created: {dataset_name}")
+
+    if args.export_dataset:
+        with zipfile.ZipFile(f"{dataset_name}.zip", "w") as zipf:
+            zipf.write(dataset_file_path)
+            zipf.write(meta_file_path)
+            zipf.write(config_file)
+            for image_file in Path(args.output_dir).rglob("*.png"):
+                zipf.write(image_file)
+
+        logging.info(f"Dataset exported: {dataset_name}.zip")
