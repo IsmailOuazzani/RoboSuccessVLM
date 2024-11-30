@@ -35,3 +35,6 @@ Then run the pre-processing script with the relevant options:
 ```
 pre-processing.py --help
 ```
+
+### Run the benchmark
+InternVL documentation: https://internvl.readthedocs.io/en/latest/internvl2.0/introduction.html
