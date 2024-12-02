@@ -383,12 +383,12 @@ if __name__ == "__main__":
             json.dumps(
                 {
                     dataset_name: {
-                        "root": args.output_dir,
-                        "annotation": dataset_file_path.relative_to(
-                            args.output_dir
-                        ).as_posix(),
+                        "root": "shell/data/" + args.output_dir,
+                        "annotation": "shell/data/"
+                        + dataset_file_path.relative_to(args.output_dir).as_posix(),
                         "repeat_time": 1,
                         "length": datapoints_created,
+                        "data_augment": False,
                     }
                 }
             )
