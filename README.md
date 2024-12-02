@@ -58,8 +58,9 @@ mv data InternVL/internvl_chat/shell/data/
 
 #### Set up the fine tuning script
 We provide a fine tuning script in this repo, which is intended to be used for InternVL and uses LoRA. Move it to the correct location:
+```
 mv CSC413-project/scripts/finetune.sh InternVL/internvl_chat/shell/internvl2.0/2nd_finetune/
-
+```
 
 #### Fine tune the model
 Go to the internvl_chat folder:
