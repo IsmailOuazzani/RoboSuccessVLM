@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+import sys
 
 import torch
 import torchvision.transforms as T
@@ -10,7 +11,6 @@ from transformers import AutoModel, AutoTokenizer
 
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
-
 
 def build_transform(input_size):
     MEAN, STD = IMAGENET_MEAN, IMAGENET_STD
@@ -24,23 +24,22 @@ def build_transform(input_size):
     )
     return transform
 
-
 def load_image(image_path, input_size=448):
     image = Image.open(image_path).convert("RGB")
     transform = build_transform(input_size=input_size)
     return transform(image).unsqueeze(0)  # Add batch dimension
 
-
 def load_dataset(dataset_file):
     with open(dataset_file, "r") as f:
         return [json.loads(line) for line in f]
-
 
 def benchmark_model(model, tokenizer, dataset, input_size=448):
     tp, fp, tn, fn = 0, 0, 0, 0
 
     for sample in tqdm(dataset, desc="Benchmarking Samples"):
-        image_path = Path("data") / sample["image"]
+        # Update the image path to the correct directory
+        image_path = Path(data_path) / "droid_3_1_1_single_turn_combined_48/data/" / sample["image"][0]
+        
         image = load_image(image_path, input_size=input_size).to(torch.bfloat16).cuda()
 
         question = sample["conversations"][0]["value"]
@@ -49,6 +48,8 @@ def benchmark_model(model, tokenizer, dataset, input_size=448):
         generation_config = {"max_new_tokens": 10, "do_sample": False}
         response = model.chat(tokenizer, image, question, generation_config)
 
+        # Print statements to confirm behavior
+        print("-------------------------------------")
         print(f"Question: {question}")
         print(f"Model Answer: {response}")
         print(f"Ground Truth: {ground_truth}")
@@ -63,11 +64,17 @@ def benchmark_model(model, tokenizer, dataset, input_size=448):
         elif model_answer == "no" and ground_truth == "yes":
             fn += 1
 
+        # Additional debug information
+        print(f"Current Metrics -> TP: {tp}, FP: {fp}, TN: {tn}, FN: {fn}")
+
     return tp, fp, tn, fn
 
 
 if __name__ == "__main__":
-    model_path = "OpenGVLab/InternVL2-1B"  # TODO
+    data_path = sys.argv[1]
+    dataset_file = f"{data_path}/droid_3_1_1_single_turn_combined_48/data/dataset.jsonl"
+
+    model_path = sys.argv[2]
     model = (
         AutoModel.from_pretrained(
             model_path,
@@ -83,7 +90,6 @@ if __name__ == "__main__":
         model_path, trust_remote_code=True, use_fast=False
     )
 
-    dataset_file = "./data/dataset.jsonl"  # Path to the dataset
     dataset = load_dataset(dataset_file)
 
     tp, fp, tn, fn = benchmark_model(model, tokenizer, dataset)
