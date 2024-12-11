@@ -166,8 +166,8 @@ cython_debug/
 *.png
 *.csv
 
-data/*
-
 *.json
 *.jsonl
 *.zip
+
+out/*
