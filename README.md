@@ -77,34 +77,19 @@ Finally, start the fine-tuning with our script. Note that you should match the n
 GPUS=2 PER_DEVICE_BATCH_SIZE=1 sh shell/internvl2.0/2nd_finetune/finetune.sh
 ```
 
-#### Running the Benchmark
-1. **Ensure the directory structure is correct:**
+
+#### Running the `benchmark.py` script:**
+
 ```
-project_directory/
-├── data/                 # Contains unzipped │   
-├── datasets such as droid_3_3_1_multi_turn_48
-│   ├── ...
-├── benchmark/
-│   ├── benchmark331Single.py
-│   ├── benchmark331Multiple.py
-│   ├── benchmark331Combined.py
-│   ├── benchmark311Single.py
-│   ├── benchmark311Multiple.py
-│   ├── benchmark311Combined.py
-│   ├── result/                   
-│   │   ├── log.txt
-│   │   ├── result.txt
-│   ├── run.py
-├──pre-processing.py
-├──...
+python benchmark.py <dataset_path> <model_path> <benchmark_type>
 ```
 
-2. **Run the `run.py` script:**
-Before running, please update the correct model path in run.py, the default is "OpenGVLab/InternVL2-1B".
-From the `benchmark` folder, execute:
-```
-python run.py
-```
+- `<dataset_path>`: Full path to the dataset's JSONL file. For example: `/data/droid_3_1_1_single_turn_combined_48/data/dataset.jsonl`
+
+- `<model_path>`: Path or identifier for the pre-trained model. For example: `OpenGVLab/InternVL2-1B`.
+- `<benchmark_type>`: Type of benchmark to run (`single`, `multi`, or `combined`).
+- The results will be saved in `/benchmark/result/log.txt` and `/benchmark/result/result.txt`
+
 
 
 #### Package the model
