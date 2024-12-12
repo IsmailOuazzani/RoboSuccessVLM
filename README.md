@@ -77,58 +77,56 @@ Finally, start the fine-tuning with our script. Note that you should match the n
 GPUS=2 PER_DEVICE_BATCH_SIZE=1 sh shell/internvl2.0/2nd_finetune/finetune.sh
 ```
 
-#### Running `run.py` in ChatGPT-api
-You can use the ChatGPT API to process and benchmark datasets using multi-turn or single-turn conversations. Here's an example of how to set up and use the ChatGPT API.
+### Benchmark Script Usage
 
-##### Prerequisites
-- Ensure you have an OpenAI API key. Set it as an environment variable:
-- export OPENAI_API_KEY="your_openai_api_key"
-- Install the OpenAI Python package
+#### Running `run.py` in ChatGPT-API or InternVL
 
-##### Usage
+The `run.py` script allows you to benchmark datasets using either the ChatGPT API (e.g., OpenAI models) or a local pretrained model (e.g., InternVL). You can process datasets in single-turn, multi-turn, or combined conversation modes.
 
+---
+
+#### For ChatGPT-API
+Ensure you have an OpenAI API key. Set it as an environment variable:
+  ```bash
+  export OPENAI_API_KEY="your_openai_api_key"
+  ```
+
+#### Usage:
 ```
-python run.py <dataset_path> <benchmark_type>
-```
-
-- `<dataset_path>`: Full path to the dataset's JSONL file. For example: `/data/droid_3_1_1_single_turn_432/data/dataset.jsonl`
-- `<benchmark_type>`: Type of benchmark to run (`single` or `multi`).
-- The results will be saved in `/benchmark/result/log.txt` and `/benchmark/result/result.txt`
-- Optional: `--model_name MODEL_NAME`, default is `gpt-4o-mini`
-
-
-#### Running the `run.py` script in `/benchmark/`:**
-
-```
-python run.py <dataset_path> <model_path> <benchmark_type>
+python run.py <dataset_path> <benchmark_type> --model_type <model_type> [OPTIONS]
 ```
 
-- `<dataset_path>`: Full path to the dataset's JSONL file. For example: `/data/droid_3_1_1_single_turn_combined_48/data/dataset.jsonl`
+#### Arguments:
+- `<dataset_path>`: Full path to the dataset's JSONL file.
+- `<benchmark_type>`: Type of benchmark to run. Options are:
+  - `single`: Single-turn conversations.
+  - `multi`: Multi-turn conversations.
+  - `combined`: Combined single-turn conversation mode (InternVL only).
+- `--model_type`: Type of model to use. Options are:
+  - `openai`: Use the OpenAI ChatGPT API (e.g., GPT-4).
+  - `internvl`: Use a locally stored pretrained model (e.g., InternVL).
+- **Options for `--model_type`:**
+  - `--model_name`: Specify the OpenAI model name (e.g., `gpt-4o-mini`). **Required for `openai`.**
+  - `--model_path`: Path or identifier for the pretrained InternVL model (e.g., `OpenGVLab/InternVL2-1B`). **Required for `internvl`.**
 
-- `<model_path>`: Path or identifier for the pre-trained model. For example: `OpenGVLab/InternVL2-1B`.
-- `<benchmark_type>`: Type of benchmark to run (`single`, `multi`, or `combined`).
-- The results will be saved in `/benchmark/result/log.txt` and `/benchmark/result/result.txt`
+#### Output:
+- Logs will be saved in `/benchmark/result/log.txt`.
+- Results will be saved in `/benchmark/result/result.txt`.
 
+---
 
-
-#### Running `run.py` in ChatGPT-api
-You can use the ChatGPT API to process and benchmark datasets using multi-turn or single-turn conversations. Here's an example of how to set up and use the ChatGPT API.
-
-##### Prerequisites
-- Ensure you have an OpenAI API key. Set it as an environment variable:
-- export OPENAI_API_KEY="your_openai_api_key"
-- Install the OpenAI Python package
-
-##### Usage
-
+#### ChatGPT API (OpenAI Models) example
+Single-turn benchmark:
 ```
-python run.py <dataset_path> <benchmark_type>
+python run.py /home/ubuntu/data/droid_3_3_1_single_turn_48/data/dataset.jsonl single --model_type openai --model_name gpt-4o-mini
+```
+#### InterVL example
+Combined benchmark:
+```
+python run.py /home/ubuntu/data/droid_3_3_1_single_turn_combined_48/data/dataset.jsonl combined --model_type internvl --model_path OpenGVLab/InternVL2-1B
 ```
 
-- `<dataset_path>`: Full path to the dataset's JSONL file. For example: `/data/droid_3_1_1_single_turn_432/data/dataset.jsonl`
-- `<benchmark_type>`: Type of benchmark to run (`single` or `multi`).
-- The results will be saved in `/benchmark/result/log.txt` and `/benchmark/result/result.txt`
-- Optional: `--model_name MODEL_NAME`, default is `gpt-4o-mini`
+
 
 #### Package the model
 After the model has been fine-tuned, the LoRa weights need to be merged back in the original pretrained InternVL model. Instructions are given [here](https://internvl.readthedocs.io/en/latest/tutorials/coco_caption_finetune.html#merging-lora-weights).
