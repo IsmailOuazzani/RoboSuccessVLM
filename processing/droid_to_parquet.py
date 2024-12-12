@@ -16,7 +16,6 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 MANIFEST_FILE_NAME = "manifest.parquet"
-
 CAMERAS = ["exterior_image_1_left", "exterior_image_2_left", "wrist_image_left"]
 
 
