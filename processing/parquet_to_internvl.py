@@ -28,12 +28,6 @@ logger.setLevel(logging.INFO)
 
 
 def sample_uniformly(frames: list[str], n: int, subsequences: int) -> list[list[str]]:
-    """
-    Samples `n` frames uniformly from the list of `frames` for each subsequence.
-    Divides the frames into `subsequences` parts and samples `n` frames from each part.
-    Ensures the last frame is always included in the last subsequence.
-    Returns a list of subsequences, where each subsequence is a list of frame paths.
-    """
     subsequences_list = []
     total_frames = len(frames)
     segment_length = total_frames // subsequences
@@ -63,11 +57,6 @@ def episode_to_image_grid(
     frames_per_grid: int,
     subsequences_per_episode: int,
 ) -> list[np.ndarray]:
-    """
-    Creates image grids for each subsequence in an episode.
-    Returns a list of np.ndarray grids.
-    """
-
     grids = []
 
     for camera in CAMERAS:
@@ -161,11 +150,10 @@ def generate_internvl_dataset(
     process_fn: Callable = episode_to_image_grid,
     sampling_fn: Callable = sample_uniformly,
 ) -> None:
-    start_read = perf_counter()
+    start_time = perf_counter()
     dataset = pd.read_parquet(dataset_path / MANIFEST_FILE_NAME)
-    end_read = perf_counter()
     logging.info(
-        f"Read dataset of {len(dataset)} episodes in {end_read - start_read:.2f} seconds.\n"
+        f"Loaded {len(dataset)} episodes in {perf_counter() - start_time:.2f} seconds."
     )
     logging.info(f"Dataset columns: {dataset.columns}\n")
     logging.info(f"Dataset types: {dataset.dtypes}\n")
