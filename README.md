@@ -78,7 +78,7 @@ GPUS=2 PER_DEVICE_BATCH_SIZE=1 sh shell/internvl2.0/2nd_finetune/finetune.sh
 ```
 
 
-#### Running the `benchmark.py` script:**
+#### Running the `run.py` script in `/benchmark/`:**
 
 ```
 python benchmark.py <dataset_path> <model_path> <benchmark_type>
