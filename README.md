@@ -81,7 +81,7 @@ GPUS=2 PER_DEVICE_BATCH_SIZE=1 sh shell/internvl2.0/2nd_finetune/finetune.sh
 #### Running the `run.py` script in `/benchmark/`:**
 
 ```
-python benchmark.py <dataset_path> <model_path> <benchmark_type>
+python run.py <dataset_path> <model_path> <benchmark_type>
 ```
 
 - `<dataset_path>`: Full path to the dataset's JSONL file. For example: `/data/droid_3_1_1_single_turn_combined_48/data/dataset.jsonl`
