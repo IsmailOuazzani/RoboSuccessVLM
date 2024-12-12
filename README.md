@@ -96,6 +96,21 @@ python run.py <dataset_path> <benchmark_type>
 - The results will be saved in `/benchmark/result/log.txt` and `/benchmark/result/result.txt`
 - Optional: `--model_name MODEL_NAME`, default is `gpt-4o-mini`
 
+
+#### Running the `run.py` script in `/benchmark/`:**
+
+```
+python run.py <dataset_path> <model_path> <benchmark_type>
+```
+
+- `<dataset_path>`: Full path to the dataset's JSONL file. For example: `/data/droid_3_1_1_single_turn_combined_48/data/dataset.jsonl`
+
+- `<model_path>`: Path or identifier for the pre-trained model. For example: `OpenGVLab/InternVL2-1B`.
+- `<benchmark_type>`: Type of benchmark to run (`single`, `multi`, or `combined`).
+- The results will be saved in `/benchmark/result/log.txt` and `/benchmark/result/result.txt`
+
+
+
 #### Package the model
 After the model has been fine-tuned, the LoRa weights need to be merged back in the original pretrained InternVL model. Instructions are given [here](https://internvl.readthedocs.io/en/latest/tutorials/coco_caption_finetune.html#merging-lora-weights).
 
