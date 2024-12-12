@@ -4,7 +4,7 @@ import logging
 import os
 from argparse import ArgumentParser
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Union
 
 import openai
 
@@ -16,7 +16,7 @@ from openai import OpenAI
 from PIL import Image
 from torchvision.transforms.functional import InterpolationMode
 from tqdm import tqdm
-from transformers import AutoModel, AutoTokenizer
+from transformers import AutoModel, AutoTokenizer, PreTrainedModel, PreTrainedTokenizer
 
 # Constants for InternVL
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
@@ -70,8 +70,8 @@ def load_dataset(dataset_file: str):
 
 def run_inference(
     model_type: str,
-    model,
-    tokenizer,
+    model: Union[OpenAI, PreTrainedModel],
+    tokenizer: Union[str, PreTrainedTokenizer],
     question: str,
     image_paths: List[str],
     max_tokens: int = 10,
