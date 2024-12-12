@@ -1,4 +1,3 @@
-import ast
 import hashlib
 import json
 import logging
@@ -13,17 +12,19 @@ from typing import Callable
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from droid_to_parquet import MANIFEST_FILE_NAME
+from constants import (
+    CAMERAS,
+    FRAME_HEIGHT,
+    FRAME_WIDTH,
+    FRAMES_PER_IMAGE_GRID,
+    MANIFEST_FILE_NAME,
+    PROMPT_GRID_GUIDANCE,
+    PROMPT_REASONING_GUIDANCE,
+)
 from tqdm import tqdm
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
-
-FRAME_WIDTH = 320
-FRAME_HEIGHT = 180
-
-FRAMES_PER_IMAGE_GRID = 6
-SUBSEQUENCES_PER_EPISODE = 3
 
 
 def sample_uniformly(frames: list[str], n: int, subsequences: int) -> list[list[str]]:
@@ -66,30 +67,32 @@ def episode_to_image_grid(
     Creates image grids for each subsequence in an episode.
     Returns a list of np.ndarray grids.
     """
-    wrist_frames = ast.literal_eval(
-        droid_episode["wrist_image_left"]
-    )  # Parse the string representation of the list
-
-    subsequences_frames = sampling_fn(
-        wrist_frames, frames_per_grid, subsequences_per_episode
-    )
 
     grids = []
-    for grid_frames in subsequences_frames:
-        M = math.ceil(math.sqrt(frames_per_grid))
-        rows, cols = (
-            (M, M - 1)
-            if frames_per_grid == M * (M - 1)
-            else (M, math.ceil(frames_per_grid / M))
+
+    for camera in CAMERAS:
+        camera_frames = droid_episode[camera]
+        subsequences_frames = sampling_fn(
+            camera_frames, frames_per_grid, subsequences_per_episode
         )
-        grid = np.zeros((rows * FRAME_HEIGHT, cols * FRAME_WIDTH, 3), dtype=np.uint8)
-        for i, frame in enumerate(grid_frames):
-            row, col = divmod(i, cols)
-            grid[
-                row * FRAME_HEIGHT : (row + 1) * FRAME_HEIGHT,
-                col * FRAME_WIDTH : (col + 1) * FRAME_WIDTH,
-            ] = plt.imread(frame)
-        grids.append(grid)
+
+        for grid_frames in subsequences_frames:
+            M = math.ceil(math.sqrt(frames_per_grid))
+            rows, cols = (  # TODO: fix this logic to prefer horizontal grids
+                (M, M - 1)
+                if frames_per_grid == M * (M - 1)
+                else (M, math.ceil(frames_per_grid / M))
+            )
+            grid = np.zeros(
+                (rows * FRAME_HEIGHT, cols * FRAME_WIDTH, 3), dtype=np.uint8
+            )
+            for i, frame in enumerate(grid_frames):
+                row, col = divmod(i, cols)
+                grid[
+                    row * FRAME_HEIGHT : (row + 1) * FRAME_HEIGHT,
+                    col * FRAME_WIDTH : (col + 1) * FRAME_WIDTH,
+                ] = plt.imread(frame)
+            grids.append(grid)
 
     return grids
 
@@ -117,78 +120,36 @@ class InternVLEpisode:
         return jsonl_entry
 
 
-PROMPT_GRID_GUIDANCE = "\n"
-PROMPT_REASONING_GUIDANCE = "\n"
-
-
 def generate_internvl_episodes(
-    language_instructions: list[str],
+    language_instruction: str,
     images: list[Path],
-    labels: list[bool],
+    label: bool,
     multi_image: bool,
 ) -> list[InternVLEpisode]:
-    episodes = []
-    width_list = []
-    height_list = []
     images_str = [p.as_posix() for p in images]
+    height_list, width_list = zip(*(plt.imread(img).shape[:2] for img in images))
 
-    for i in range(len(images)):  # TODO: pass this directly through function
-        image = plt.imread(images[i])
-        height_list.append(image.shape[0])
-        width_list.append(image.shape[1])
+    episodes = []
+    question = PROMPT_REASONING_GUIDANCE
+    if multi_image:
+        question += "\n".join(f"Frame {j}: <image{j}>" for j in range(len(images)))
+    else:
+        question += "Frame: <image0>"
+    question += f'\nHas the following task been achieved: "{language_instruction}"? Answer with "yes" or "no" only.'
+    if width_list[0] != FRAME_WIDTH or height_list[0] != FRAME_HEIGHT:
+        question = PROMPT_GRID_GUIDANCE + question
 
-    for i, language_instruction in enumerate(language_instructions):
-        if not multi_image:
-            question = (
-                PROMPT_REASONING_GUIDANCE
-                + f'<image>\nHas the following task been achieved: "{language_instruction}"? Answer with "yes" or "no" only.'
-            )
-            if (
-                width_list[0] != FRAME_WIDTH or height_list[0] != FRAME_HEIGHT
-            ):  # image grid
-                question = PROMPT_GRID_GUIDANCE + question
-            episodes.append(
-                InternVLEpisode(
-                    image=images_str,
-                    width_list=width_list,
-                    height_list=height_list,
-                    conversations=[
-                        {
-                            "from": "human",
-                            "value": question,
-                        },
-                        {
-                            "role": "gpt",
-                            "value": "yes" if labels[0] else "no",
-                        },
-                    ],
-                )
-            )
-
-        else:
-            question = PROMPT_REASONING_GUIDANCE
-            for j in range(len(images)):
-                question += f"Frame {j}: <image{j}>\n"
-            question += f'Has the following task been achieved: "{language_instruction}"? Answer with "yes" or "no" only.'
-            if width_list[0] != FRAME_WIDTH or height_list[0] != FRAME_HEIGHT:
-                question = PROMPT_GRID_GUIDANCE + question
-            episodes.append(
-                InternVLEpisode(
-                    image=images_str,
-                    width_list=width_list,
-                    height_list=height_list,
-                    conversations=[
-                        {
-                            "from": "human",
-                            "value": question,
-                        },
-                        {
-                            "role": "gpt",
-                            "value": "yes" if labels[0] else "no",
-                        },
-                    ],
-                )
-            )
+    episodes.append(
+        InternVLEpisode(
+            image=images_str,
+            width_list=list(width_list),
+            height_list=list(height_list),
+            conversations=[
+                {"from": "human", "value": question},
+                {"role": "gpt", "value": "yes" if label else "no"},
+            ],
+        )
+    )
     return episodes
 
 
@@ -204,46 +165,63 @@ def generate_internvl_dataset(
     start_read = perf_counter()
     dataset = pd.read_parquet(dataset_path / MANIFEST_FILE_NAME)
     end_read = perf_counter()
-    logging.info(f"Read dataset in {end_read - start_read:.2f} seconds.")
-    logging.info(f"Loaded dataset with {len(dataset)} episodes.")
-    logging.info(f"Dataset columns: {dataset.columns}")
+    logging.info(
+        f"Read dataset of {len(dataset)} episodes in {end_read - start_read:.2f} seconds.\n"
+    )
+    logging.info(f"Dataset columns: {dataset.columns}\n")
+    logging.info(f"Dataset types: {dataset.dtypes}\n")
+    logging.info(f"First episode: {dataset.iloc[0]}\n")
 
     if output_path.exists():
         shutil.rmtree(output_path)
     output_path.mkdir(parents=True)
 
-    # Plot the top language instructions
-    language_instructions = dataset["language_instruction_1"].value_counts().head(20)
-    language_instructions.sort_values().plot(kind="barh", figsize=(10, 8))
+    # Some language instructions are missing
+    dataset["language_instructions"] = dataset["language_instructions"].apply(
+        lambda x: [item for item in x if item != ""]
+    )
+
+    # Plot most frequent language instructions
+    language_instructions = (
+        dataset["language_instructions"]
+        .explode()
+        .value_counts()
+        .head(20)
+        .sort_values()
+        .plot(kind="barh", figsize=(10, 8))
+    )
     plt.xlabel("Frequency")
     plt.ylabel("Language Instruction")
     plt.title("Top Language Instructions")
     plt.tight_layout()
     plt.savefig(output_path / "language_instruction_frequency.png")
 
+    # As per https://internvl.readthedocs.io/en/latest/internvl2.0/finetune.html#prepare-your-customized-training-data
     meta_file_path = output_path / "meta.jsonl"
     images_path = output_path / "images"
     images_path.mkdir(parents=True)
 
     num_internvl_episodes = 0
     for _, droid_episode in tqdm(dataset.iterrows(), total=len(dataset)):
-        images = process_fn(
-            droid_episode=droid_episode,
-            sampling_fn=sampling_fn,
-            frames_per_grid=frames_per_grid,
-            subsequences_per_episode=subsequences_per_episode,
-        )
-        image_paths = save_images(images=images, output_path=images_path)
-        internvl_episodes = generate_internvl_episodes(
-            language_instructions=[
-                droid_episode["language_instruction_1"],
-                droid_episode["language_instruction_2"],
-                droid_episode["language_instruction_3"],
-            ],
-            images=image_paths,
-            labels=[True],
-            multi_image=multi_image,
-        )
+        internvl_episodes = []
+        language_instructions = droid_episode["language_instructions"]
+        for language_instruction in language_instructions:
+            images = process_fn(
+                droid_episode=droid_episode,
+                sampling_fn=sampling_fn,
+                frames_per_grid=frames_per_grid,
+                subsequences_per_episode=subsequences_per_episode,
+            )
+            image_paths = save_images(images=images, output_path=images_path)
+            # labels = [False] * (len(image_paths)-1) + [True]
+            internvl_episodes.extend(
+                generate_internvl_episodes(
+                    language_instruction=language_instruction,
+                    images=image_paths,
+                    label=True,
+                    multi_image=multi_image,
+                )
+            )
 
         with open(meta_file_path, "a") as f:
             for internvl_episode in internvl_episodes:
@@ -252,8 +230,6 @@ def generate_internvl_dataset(
                     + "\n"
                 )
                 num_internvl_episodes += 1
-
-        exit()
 
 
 if __name__ == "__main__":
@@ -272,10 +248,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--subsequences_per_episode",
         type=int,
-        default=SUBSEQUENCES_PER_EPISODE,
+        default=1,
         help="Number of subsequences per episode.",
     )
-    # TODO: make it so that you can only have multi images with
     parser.add_argument(
         "--frames_per_grid",
         type=int,

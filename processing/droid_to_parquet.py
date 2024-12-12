@@ -4,27 +4,25 @@ import shutil
 from argparse import ArgumentParser
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from time import perf_counter
 
-import fastparquet
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 import tensorflow as tf
 import tensorflow_datasets as tfds
+from constants import CAMERAS, MANIFEST_FILE_NAME
 from tqdm import tqdm
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "4"
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-MANIFEST_FILE_NAME = "manifest.parquet"
-CAMERAS = ["exterior_image_1_left", "exterior_image_2_left", "wrist_image_left"]
-
 
 @dataclass
 class Episode:
     id: int
-    language_instruction_1: str
-    language_instruction_2: str
-    language_instruction_3: str
+    language_instructions: list[str]
     exterior_image_1_left: list[str]
     exterior_image_2_left: list[str]
     wrist_image_left: list[str]
@@ -64,9 +62,7 @@ def extract_droid_episode(
 
     return Episode(
         id=episode_id,
-        language_instruction_1=language_instructions[0],
-        language_instruction_2=language_instructions[1],
-        language_instruction_3=language_instructions[2],
+        language_instructions=language_instructions,
         exterior_image_1_left=camera_frames["exterior_image_1_left"],
         exterior_image_2_left=camera_frames["exterior_image_2_left"],
         wrist_image_left=camera_frames["wrist_image_left"],
@@ -74,23 +70,15 @@ def extract_droid_episode(
 
 
 def append_to_parquet(file_path: Path, data: pd.DataFrame):
-    """Append data to a parquet file.
-
-    Args:
-        file_path (Path): Path to the parquet file.
-        data (pd.DataFrame): Data to append to the parquet file.
-    """
+    """Append data to a parquet file with pyarrow to preserve lists."""
+    table = pa.Table.from_pandas(data)
     if file_path.exists():
-        existing_pf = fastparquet.ParquetFile(file_path)
-        fastparquet.write(
-            file_path,
-            data,
-            compression="SNAPPY",
-            append=True,
-            open_with=existing_pf.open,
-        )
+        # Load existing data and append the new data in-memory
+        existing_table = pq.read_table(file_path)
+        combined_table = pa.concat_tables([existing_table, table])
+        pq.write_table(combined_table, file_path)
     else:
-        fastparquet.write(file_path, data, compression="SNAPPY")
+        pq.write_table(table, file_path)
 
 
 def process_droid_dataset(
@@ -156,9 +144,13 @@ def process_droid_dataset(
                     )
                     num_episodes_extracted += 1
                 pbar.update(1)
+            start_write = perf_counter()
             append_to_parquet(
                 file_path=manifest_path,
                 data=pd.DataFrame([episode.to_pd_row() for episode in chunk_episodes]),
+            )
+            logging.info(
+                f"Wrote chunk {i} to parquet file in {perf_counter() - start_write:.2f} seconds."
             )
 
 
