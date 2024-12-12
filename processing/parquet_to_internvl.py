@@ -124,17 +124,16 @@ def generate_internvl_episodes(
     language_instruction: str,
     images: list[Path],
     label: bool,
-    multi_image: bool,
 ) -> list[InternVLEpisode]:
     images_str = [p.as_posix() for p in images]
     height_list, width_list = zip(*(plt.imread(img).shape[:2] for img in images))
 
     episodes = []
     question = PROMPT_REASONING_GUIDANCE
-    if multi_image:
-        question += "\n".join(f"Frame {j}: <image{j}>" for j in range(len(images)))
+    if len(images) > 1:
+        question += "\n".join(f"Frame {j}: <image>" for j in range(len(images)))
     else:
-        question += "Frame: <image0>"
+        question += "<image>"
     question += f'\nHas the following task been achieved: "{language_instruction}"? Answer with "yes" or "no" only.'
     if width_list[0] != FRAME_WIDTH or height_list[0] != FRAME_HEIGHT:
         question = PROMPT_GRID_GUIDANCE + question
@@ -213,15 +212,23 @@ def generate_internvl_dataset(
                 subsequences_per_episode=subsequences_per_episode,
             )
             image_paths = save_images(images=images, output_path=images_path)
-            # labels = [False] * (len(image_paths)-1) + [True]
-            internvl_episodes.extend(
-                generate_internvl_episodes(
-                    language_instruction=language_instruction,
-                    images=image_paths,
-                    label=True,
-                    multi_image=multi_image,
+            if multi_image:
+                internvl_episodes.extend(
+                    generate_internvl_episodes(
+                        language_instruction=language_instruction,
+                        images=image_paths,
+                        label=True,
+                    )
                 )
-            )
+            else:
+                for i, image_path in enumerate(image_paths):
+                    internvl_episodes.extend(
+                        generate_internvl_episodes(
+                            language_instruction=language_instruction,
+                            images=[image_path],
+                            label=i == len(image_paths) - 1,
+                        )
+                    )
 
         with open(meta_file_path, "a") as f:
             for internvl_episode in internvl_episodes:
@@ -230,6 +237,7 @@ def generate_internvl_dataset(
                     + "\n"
                 )
                 num_internvl_episodes += 1
+        exit()
 
 
 if __name__ == "__main__":
