@@ -77,6 +77,25 @@ Finally, start the fine-tuning with our script. Note that you should match the n
 GPUS=2 PER_DEVICE_BATCH_SIZE=1 sh shell/internvl2.0/2nd_finetune/finetune.sh
 ```
 
+#### Running `run.py` in ChatGPT-api
+You can use the ChatGPT API to process and benchmark datasets using multi-turn or single-turn conversations. Here's an example of how to set up and use the ChatGPT API.
+
+##### Prerequisites
+- Ensure you have an OpenAI API key. Set it as an environment variable:
+- export OPENAI_API_KEY="your_openai_api_key"
+- Install the OpenAI Python package
+
+##### Usage
+
+```
+python run.py <dataset_path> <benchmark_type>
+```
+
+- `<dataset_path>`: Full path to the dataset's JSONL file. For example: `/data/droid_3_1_1_single_turn_432/data/dataset.jsonl`
+- `<benchmark_type>`: Type of benchmark to run (`single` or `multi`).
+- The results will be saved in `/benchmark/result/log.txt` and `/benchmark/result/result.txt`
+- Optional: `--model_name MODEL_NAME`, default is `gpt-4o-mini`
+
 #### Package the model
 After the model has been fine-tuned, the LoRa weights need to be merged back in the original pretrained InternVL model. Instructions are given [here](https://internvl.readthedocs.io/en/latest/tutorials/coco_caption_finetune.html#merging-lora-weights).
 

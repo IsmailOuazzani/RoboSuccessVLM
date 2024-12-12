@@ -1,0 +1,53 @@
+Model Name: gpt-4o-mini
+Dataset Path: /Users/macbook/csc413/CSC413-project/data/droid_3_1_1_single_turn_432/data/dataset.jsonl
+-------------------------------------
+True Positives: 0
+False Positives: 1
+True Negatives: 287
+False Negatives: 144
+Accuracy: 0.6644
+Precision: 0.0000
+Recall: 0.0000
+F1 Score: 0.0000
+-------------------------------------
+Model Name: gpt-4o-mini
+Dataset Path: /Users/macbook/csc413/CSC413-project/data/droid_3_1_1_multi_turn_48/data/dataset.jsonl
+Benchmark Type: multi
+-------------------------------------
+True Positives: 2
+False Positives: 3
+True Negatives: 93
+False Negatives: 46
+Accuracy: 0.6597
+Precision: 0.4000
+Recall: 0.0417
+F1 Score: 0.0755
+-------------------------------------
+
+Model Name: gpt-4o-mini
+Dataset Path: /Users/macbook/csc413/CSC413-project/data/droid_3_3_1_single_turn_432/data/dataset.jsonl
+Benchmark Type: single
+-------------------------------------
+True Positives: 11
+False Positives: 2
+True Negatives: 286
+False Negatives: 133
+Accuracy: 0.6875
+Precision: 0.8462
+Recall: 0.0764
+F1 Score: 0.1401
+-------------------------------------
+
+Model Name: gpt-4o-mini
+Dataset Path: /Users/macbook/csc413/CSC413-project/data/droid_3_3_1_multi_turn_48/data/dataset.jsonl
+Benchmark Type: multi
+-------------------------------------
+True Positives: 2
+False Positives: 4
+True Negatives: 92
+False Negatives: 46
+Accuracy: 0.6528
+Precision: 0.3333
+Recall: 0.0417
+F1 Score: 0.0741
+-------------------------------------
