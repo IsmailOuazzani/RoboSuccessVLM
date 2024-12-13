@@ -68,8 +68,8 @@ def process_droid_dataset(
     dataset_name: str,
     output_path: Path,
     split: str,
-    max_episodes: int = 0,
-    chunk_size: int = 100,
+    chunk_size: int,
+    max_episodes: int,
 ):
     full_dataset, dataset_info = tfds.load(
         dataset_name,
@@ -80,10 +80,12 @@ def process_droid_dataset(
 
     logging.info(f"Dataset info: {dataset_info}")
     num_episodes = len(full_dataset)
-    if max_episodes:
-        num_episodes = min(num_episodes, max_episodes)
-    num_chunks = num_episodes // chunk_size
     logging.info(f"Number of episodes: {num_episodes}")
+    if max_episodes:  # TODO: fix this code to pick exactly the number of episodes
+        num_episodes = min(num_episodes, max_episodes)
+    num_chunks = num_episodes // chunk_size + 1
+    num_episodes = chunk_size * num_chunks
+    logging.info(f"Number of episodes to process: {num_episodes}")
     logging.info(f"Number of dataset chunks: {num_chunks}")
     del full_dataset
 
@@ -149,20 +151,24 @@ if __name__ == "__main__":
         default=0,
         help="Maximum number of episodes to process. 0 means all episodes.",
     )
+    parser.add_argument(
+        "--chunk_size",
+        type=int,
+        default=100,
+        help="Number of episodes to process in a single chunk.",
+    )
     args = parser.parse_args()
 
     dataset_path = Path(args.dataset_path)
     dataset_name = args.dataset_name
     output_path = Path(args.output)
     split = args.split
-    logging.info(f"Dataset path: {dataset_path}")
-    logging.info(f"Dataset name: {dataset_name}")
-    logging.info(f"Output path: {output_path}")
-    logging.info(f"Split: {split}")
+    logging.info(f"Args: {vars(args)}")
     process_droid_dataset(
         dataset_path=dataset_path,
         dataset_name=dataset_name,
         output_path=output_path,
         split=split,
+        chunk_size=args.chunk_size,
         max_episodes=args.max_episodes,
     )
