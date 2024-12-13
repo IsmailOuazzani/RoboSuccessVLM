@@ -126,20 +126,6 @@ Combined benchmark:
 ```
 python run.py /home/ubuntu/data/droid_3_3_1_single_turn_combined_48/data/dataset.jsonl combined --model_type internvl --model_path OpenGVLab/InternVL2-1B
 ```
-=======
-
-#### Running the `run.py` script in `/benchmark/`:**
-
-```
-python run.py <dataset_path> <model_path> <benchmark_type>
-```
-
-- `<dataset_path>`: Full path to the dataset's JSONL file. For example: `/data/droid_3_1_1_single_turn_combined_48/data/dataset.jsonl`
-
-- `<model_path>`: Path or identifier for the pre-trained model. For example: `OpenGVLab/InternVL2-1B`.
-- `<benchmark_type>`: Type of benchmark to run (`single`, `multi`, or `combined`).
-- The results will be saved in `/benchmark/result/log.txt` and `/benchmark/result/result.txt`
-
 
 
 #### Package the model
