@@ -31,9 +31,17 @@ or download the full dataset (1.7Tb):
 gsutil -m cp -r gs://gresearch/robotics/droid <your_local_path>
 ```
 
-Then run the pre-processing script with the relevant options:
+Run `processing/droid_to_parquet.py` to convert the droid dataset (tensorflow format) into an interim more usable format. It is recommended to set a maximum number of episodes. For example
 ```
-pre-processing.py --help
+python processing/droid_to_parquet.py --dataset_path /media/ismail/WDC --dataset_name droid --split train --max_episodes 25 --output interim-dataset-example
+```
+
+Then, convert the dataset to a format compatible with InternVL fine tuning:
+```
+# For example, for the multi image format:
+python processing/parquet_to_internvl.py --dataset_path out --output_path .idea/dffinal --frames_per_grid 1 --subsequences_per_episode 6
+# For the image grid format:
+python processing/parquet_to_internvl.py --dataset_path out --output_path .idea/dffinal --frames_per_grid 6
 ```
 
 ### Run the benchmark
@@ -52,29 +60,20 @@ Alternatively, you could upload the `setup-lambdalabs-env.sh` file to your insta
 Upload your dataset to the instance. After doing so, unzip and move the dataset to the correct directory. For example:
 ```
 unzip droid_3_1_1_single_turn_432.zip
-mv droid_3_1_1_single_turn_432.json InternVL/internvl_chat/shell/data/
-mv data InternVL/internvl_chat/shell/data/
 ```
 
 #### Set up the fine tuning script
-We provide a fine tuning script in this repo, which is intended to be used for InternVL and uses LoRA. Move it to the correct location:
-```
-mv CSC413-project/scripts/finetune.sh InternVL/internvl_chat/shell/internvl2.0/2nd_finetune/
-```
+We provide a fine tuning script in this repo. Upload it to your current directory.
 
 #### Fine tune the model
-Go to the internvl_chat folder:
-```
-cd ~/InternVL/internvl_chat
-```
-Then download the [pretrained model](https://internvl.readthedocs.io/en/latest/internvl2.0/finetune.html#model-preparation) of your choosing. For example:
+Download the [pretrained model](https://internvl.readthedocs.io/en/latest/internvl2.0/finetune.html#model-preparation) of your choosing. For example:
 ```
 huggingface-cli download --resume-download --local-dir-use-symlinks False OpenGVLab/InternVL2-1B --local-dir pretrained/InternVL2-1B
 ```
 
 Finally, start the fine-tuning with our script. Note that you should match the number of GPUs to your setup:
 ```
-GPUS=2 PER_DEVICE_BATCH_SIZE=1 sh shell/internvl2.0/2nd_finetune/finetune.sh
+GPUS=2 PER_DEVICE_BATCH_SIZE=1 sh finetune.sh
 ```
 
 
