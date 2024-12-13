@@ -114,7 +114,9 @@ def generate_internvl_episodes(
     images: list[Path],
     label: bool,
 ) -> list[InternVLEpisode]:
-    images_str = [p.as_posix() for p in images]
+    images_str = [
+        "images/" + p.name for p in images
+    ]  # TODO: fix this to use relative paths
     height_list, width_list = zip(*(plt.imread(img).shape[:2] for img in images))
 
     episodes = []
@@ -134,7 +136,7 @@ def generate_internvl_episodes(
             height_list=list(height_list),
             conversations=[
                 {"from": "human", "value": question},
-                {"role": "gpt", "value": "yes" if label else "no"},
+                {"from": "gpt", "value": "yes" if label else "no"},
             ],
         )
     )
@@ -149,7 +151,7 @@ def generate_internvl_dataset(
     subsequences_per_episode: int,
     process_fn: Callable = episode_to_image_grid,
     sampling_fn: Callable = sample_uniformly,
-) -> None:
+) -> int:
     start_time = perf_counter()
     dataset = pd.read_parquet(dataset_path / MANIFEST_FILE_NAME)
     logging.info(
@@ -184,7 +186,8 @@ def generate_internvl_dataset(
     plt.savefig(output_path / "language_instruction_frequency.png")
 
     # As per https://internvl.readthedocs.io/en/latest/internvl2.0/finetune.html#prepare-your-customized-training-data
-    meta_file_path = output_path / "meta.jsonl"
+    meta_file_path = output_path / "meta.json"
+    annotation_file_path = output_path / "annotation.jsonl"
     images_path = output_path / "images"
     images_path.mkdir(parents=True)
 
@@ -218,14 +221,30 @@ def generate_internvl_dataset(
                         )
                     )
 
-        with open(meta_file_path, "a") as f:
+        with open(annotation_file_path, "a") as f:
             for internvl_episode in internvl_episodes:
                 f.write(
                     json.dumps(internvl_episode.to_jsonl(with_id=num_internvl_episodes))
                     + "\n"
                 )
                 num_internvl_episodes += 1
-        exit()
+
+    num_internvl_episodes = len(list(open(annotation_file_path)))
+    meta_file_path.write_text(
+        # https://internvl.readthedocs.io/en/latest/get_started/chat_data_format.html#meta-file
+        json.dumps(
+            {
+                "test": {
+                    "root": output_path.name,
+                    "annotation": output_path.name + "/annotation.jsonl",
+                    "data_augment": False,
+                    "repeat_time": 1,
+                    "length": num_internvl_episodes,
+                }
+            }
+        )
+    )
+    return num_internvl_episodes
 
 
 if __name__ == "__main__":
@@ -262,10 +281,13 @@ if __name__ == "__main__":
 
     dataset_path = Path(args.dataset_path)
     output_path = Path(args.output_path)
-    generate_internvl_dataset(
+    num_internvl_episodes = generate_internvl_dataset(
         dataset_path=dataset_path,
         output_path=output_path,
         frames_per_grid=args.frames_per_grid,
         multi_image=args.multi_image,
         subsequences_per_episode=args.subsequences_per_episode,
     )
+    logging.info(f"Generated {num_internvl_episodes} InternVL episodes.")
+    # create a dataset name that takes into account the parameters
+    (output_path / "README").write_text(json.dumps(vars(args)))

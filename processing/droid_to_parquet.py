@@ -4,11 +4,8 @@ import shutil
 from argparse import ArgumentParser
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from time import perf_counter
 
 import pandas as pd
-import pyarrow as pa
-import pyarrow.parquet as pq
 import tensorflow as tf
 import tensorflow_datasets as tfds
 from constants import CAMERAS, MANIFEST_FILE_NAME
@@ -34,15 +31,6 @@ class Episode:
 def extract_droid_episode(
     droid_episode: dict, output_files_path: Path, episode_id: int
 ) -> Episode:
-    """
-    Args:
-        droid_episode (dict): Episode data from the droid dataset.
-        output_files_path (Path): Directory to save the episode frames.
-        episode_id (int): Episode id.
-
-    Returns:
-        Episode: Episode data.
-    """
     steps = list(droid_episode["steps"])
     step0 = steps[0]
     language_instructions = [
@@ -52,13 +40,19 @@ def extract_droid_episode(
     ]
 
     camera_frames: dict[str, list[str]] = {camera: [] for camera in CAMERAS}
+    buffered_images = []
+
     for i, step in enumerate(steps):
         observation = step["observation"]
         for camera in CAMERAS:
             raw_frame = observation[camera]
             frame_path = output_files_path / f"{episode_id}_{camera}_{i}.jpeg"
-            tf.io.write_file(frame_path.as_posix(), tf.image.encode_jpeg(raw_frame))
+            encoded_jpeg = tf.image.encode_jpeg(raw_frame, quality=85)
+            buffered_images.append((encoded_jpeg, frame_path))
             camera_frames[camera].append(frame_path.as_posix())
+
+    for encoded_jpeg, frame_path in buffered_images:
+        tf.io.write_file(frame_path.as_posix(), encoded_jpeg)
 
     return Episode(
         id=episode_id,
@@ -69,34 +63,14 @@ def extract_droid_episode(
     )
 
 
-def append_to_parquet(file_path: Path, data: pd.DataFrame):
-    """Append data to a parquet file with pyarrow to preserve lists."""
-    table = pa.Table.from_pandas(data)
-    if file_path.exists():
-        # Load existing data and append the new data in-memory
-        existing_table = pq.read_table(file_path)
-        combined_table = pa.concat_tables([existing_table, table])
-        pq.write_table(combined_table, file_path)
-    else:
-        pq.write_table(table, file_path)
-
-
 def process_droid_dataset(
     dataset_path: Path,
     dataset_name: str,
     output_path: Path,
     split: str,
-    chunk_size: int = 20,
+    max_episodes: int = 0,
+    chunk_size: int = 100,
 ):
-    """Convert the droid tensorflow dataset to parquet format.
-
-    Args:
-        dataset_path (Path): Path to the parent directory of the droid dataset.
-        dataset_name (str): Name of the dataset directory.
-        output_path (Path): Path to save the processed dataset.
-        split (str): Dataset split to convert.
-        chunk_size (int, optional): Chunk size to iterate over the tensorflow dataset. Defaults to 20.
-    """
     full_dataset, dataset_info = tfds.load(
         dataset_name,
         data_dir=dataset_path,
@@ -106,6 +80,8 @@ def process_droid_dataset(
 
     logging.info(f"Dataset info: {dataset_info}")
     num_episodes = len(full_dataset)
+    if max_episodes:
+        num_episodes = min(num_episodes, max_episodes)
     num_chunks = num_episodes // chunk_size
     logging.info(f"Number of episodes: {num_episodes}")
     logging.info(f"Number of dataset chunks: {num_chunks}")
@@ -119,6 +95,7 @@ def process_droid_dataset(
     output_files_path.mkdir(parents=True)
 
     num_episodes_extracted = 0
+    episodes = []
     with tqdm(total=num_episodes, desc="Processing Episodes") as pbar:
         for i in range(num_chunks):
             chunk_dataset = tfds.load(
@@ -126,7 +103,6 @@ def process_droid_dataset(
                 data_dir=dataset_path,
                 split=f"{split}[{i * chunk_size}:{(i + 1) * chunk_size}]",
             )
-            chunk_episodes = []
             for droid_episode in chunk_dataset:
                 first_step = tf.data.experimental.get_single_element(
                     droid_episode["steps"].take(1)
@@ -135,7 +111,7 @@ def process_droid_dataset(
                     first_step["language_instruction"].numpy().decode("utf-8")
                 )
                 if language_instruction:
-                    chunk_episodes.append(
+                    episodes.append(
                         extract_droid_episode(
                             droid_episode=droid_episode,
                             output_files_path=output_files_path,
@@ -144,14 +120,8 @@ def process_droid_dataset(
                     )
                     num_episodes_extracted += 1
                 pbar.update(1)
-            start_write = perf_counter()
-            append_to_parquet(
-                file_path=manifest_path,
-                data=pd.DataFrame([episode.to_pd_row() for episode in chunk_episodes]),
-            )
-            logging.info(
-                f"Wrote chunk {i} to parquet file in {perf_counter() - start_write:.2f} seconds."
-            )
+    episodes_df = pd.DataFrame([episode.to_pd_row() for episode in episodes])
+    episodes_df.to_parquet(manifest_path)
 
 
 if __name__ == "__main__":
@@ -173,6 +143,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--split", type=str, default="train", help="Dataset split to convert."
     )
+    parser.add_argument(
+        "--max_episodes",
+        type=int,
+        default=0,
+        help="Maximum number of episodes to process. 0 means all episodes.",
+    )
     args = parser.parse_args()
 
     dataset_path = Path(args.dataset_path)
@@ -188,4 +164,5 @@ if __name__ == "__main__":
         dataset_name=dataset_name,
         output_path=output_path,
         split=split,
+        max_episodes=args.max_episodes,
     )
