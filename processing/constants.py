@@ -10,4 +10,4 @@ FRAMES_PER_IMAGE_GRID = 6
 PROMPT_GRID_GUIDANCE = (
     "The provided image(s) arranges key frames from a video in a grid view.\n"
 )
-PROMPT_REASONING_GUIDANCE = "\n"
+PROMPT_REASONING_GUIDANCE = 'Answer with "yes" or "no" only.\n'
