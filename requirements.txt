@@ -4,3 +4,5 @@ pillow
 tensorflow
 pre-commit
 transformers==4.37.2
+openai
+python-dotenv
