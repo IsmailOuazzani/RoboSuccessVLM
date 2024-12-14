@@ -1,8 +1,9 @@
 set -x
 
-GPUS=${GPUS:-2}
-BATCH_SIZE=${BATCH_SIZE:-16}
-PER_DEVICE_BATCH_SIZE=${PER_DEVICE_BATCH_SIZE:-4}
+# Optimal config for 4xA6000
+GPUS=4
+BATCH_SIZE=128
+PER_DEVICE_BATCH_SIZE=16
 GRADIENT_ACC=$((BATCH_SIZE / PER_DEVICE_BATCH_SIZE / GPUS))
 
 
@@ -40,7 +41,7 @@ torchrun \
   --vision_select_layer -1 \
   --dataloader_num_workers 4 \
   --bf16 True \
-  --num_train_epochs 3 \
+  --num_train_epochs 1 \
   --per_device_train_batch_size ${PER_DEVICE_BATCH_SIZE} \
   --gradient_accumulation_steps ${GRADIENT_ACC} \
   --evaluation_strategy "no" \
