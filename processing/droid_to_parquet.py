@@ -67,9 +67,9 @@ def process_droid_dataset(
     dataset_path: Path,
     dataset_name: str,
     output_path: Path,
-    split: str,
     chunk_size: int,
     max_episodes: int,
+    start_episode: int,
 ):
     full_dataset, dataset_info = tfds.load(
         dataset_name,
@@ -81,14 +81,16 @@ def process_droid_dataset(
     logging.info(f"Dataset info: {dataset_info}")
     num_episodes = len(full_dataset)
     logging.info(f"Number of episodes: {num_episodes}")
-    if max_episodes:  # TODO: fix this code to pick exactly the number of episodes
-        num_episodes = min(num_episodes, max_episodes)
-    num_chunks = num_episodes // chunk_size + 1
-    num_episodes = chunk_size * num_chunks
-    logging.info(f"Number of episodes to process: {num_episodes}")
+    if start_episode >= num_episodes:
+        raise ValueError("Start episode is beyond the total number of episodes.")
+
+    if max_episodes:  # Adjust num_episodes based on max_episodes
+        num_episodes = min(num_episodes, start_episode + max_episodes)
+
+    num_chunks = (num_episodes - start_episode) // chunk_size + 1
+    logging.info(f"Number of episodes to process: {num_episodes - start_episode}")
     logging.info(f"Number of dataset chunks: {num_chunks}")
     del full_dataset
-
     if output_path.exists():
         shutil.rmtree(output_path)
     output_path.mkdir(parents=True)
@@ -98,12 +100,15 @@ def process_droid_dataset(
 
     num_episodes_extracted = 0
     episodes = []
-    with tqdm(total=num_episodes, desc="Processing Episodes") as pbar:
+    with tqdm(total=num_episodes - start_episode, desc="Processing Episodes") as pbar:
         for i in range(num_chunks):
+            chunk_start = start_episode + i * chunk_size
+            chunk_end = min(start_episode + (i + 1) * chunk_size, num_episodes)
             chunk_dataset = tfds.load(
                 dataset_name,
                 data_dir=dataset_path,
-                split=f"{split}[{i * chunk_size}:{(i + 1) * chunk_size}]",
+                # This dataset only has a train split
+                split=f"train[{chunk_start}:{chunk_end}]",
             )
             for droid_episode in chunk_dataset:
                 first_step = tf.data.experimental.get_single_element(
@@ -143,9 +148,6 @@ if __name__ == "__main__":
         "--output", type=str, required=True, help="Path to save the processed dataset."
     )
     parser.add_argument(
-        "--split", type=str, default="train", help="Dataset split to convert."
-    )
-    parser.add_argument(
         "--max_episodes",
         type=int,
         default=0,
@@ -157,18 +159,23 @@ if __name__ == "__main__":
         default=100,
         help="Number of episodes to process in a single chunk.",
     )
+    parser.add_argument(
+        "--start_episode",
+        type=int,
+        default=0,
+        help="Episode number to start processing from.",
+    )
     args = parser.parse_args()
 
     dataset_path = Path(args.dataset_path)
     dataset_name = args.dataset_name
     output_path = Path(args.output)
-    split = args.split
     logging.info(f"Args: {vars(args)}")
     process_droid_dataset(
         dataset_path=dataset_path,
         dataset_name=dataset_name,
         output_path=output_path,
-        split=split,
         chunk_size=args.chunk_size,
         max_episodes=args.max_episodes,
+        start_episode=args.start_episode,
     )
