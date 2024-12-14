@@ -20,6 +20,7 @@ from constants import (
     PROMPT_GRID_GUIDANCE,
     PROMPT_REASONING_GUIDANCE,
 )
+from PIL import Image
 from tqdm import tqdm
 
 logger = logging.getLogger()
@@ -80,7 +81,7 @@ def episode_to_image_grid(
                 grid[
                     row * FRAME_HEIGHT : (row + 1) * FRAME_HEIGHT,
                     col * FRAME_WIDTH : (col + 1) * FRAME_WIDTH,
-                ] = plt.imread(frame)
+                ] = np.asarray(Image.open(frame))
             grids.append(grid)
 
     return grids
@@ -94,7 +95,7 @@ def save_images(
         image_path = output_path / f"{start_index + i}.jpeg"
         if image_path.exists():
             raise RuntimeError(f"Image {image_path} already exists.")
-        plt.imsave(image_path, image)
+        Image.fromarray(image).save(image_path)
         image_paths.append(image_path)
     return image_paths
 
@@ -321,7 +322,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--negative_ratio",
         type=int,
-        default=1.0,
+        default=1,
         help="Ratio of negative examples to positive examples.",
     )
     args = parser.parse_args()
