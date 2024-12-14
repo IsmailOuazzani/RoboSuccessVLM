@@ -230,42 +230,46 @@ def generate_internvl_dataset(
     image_count = 0
     internvl_episodes = []
     for _, droid_episode in tqdm(dataset.iterrows(), total=len(dataset)):
-        language_instruction = droid_episode["language_instruction"]
-        images = episode_to_image_grid(
-            droid_episode=droid_episode,
-            frames_per_grid=frames_per_grid,
-            subsequences_per_episode=subsequences_per_episode,
-        )
-        image_paths = save_images(
-            images=images, output_path=images_path, start_index=image_count
-        )
-        image_count += len(image_paths)
-        negative_language_instructions = (
-            dataset[dataset["instruction_id"] != droid_episode["instruction_id"]][
-                "language_instruction"
-            ]
-            .sample(negative_ratio)
-            .tolist()
-        )
-        if multi_image:
-            frames_per_camera = len(images) // N_CAMERAS
-            for i in range(0, len(images), frames_per_camera):
-                internvl_episodes.extend(
-                    generate_internvl_episodes(
-                        language_instruction=language_instruction,
-                        images=image_paths[i : i + frames_per_camera],
-                        negative_language_instructions=negative_language_instructions,
+        try:
+            language_instruction = droid_episode["language_instruction"]
+            images = episode_to_image_grid(
+                droid_episode=droid_episode,
+                frames_per_grid=frames_per_grid,
+                subsequences_per_episode=subsequences_per_episode,
+            )
+            image_paths = save_images(
+                images=images, output_path=images_path, start_index=image_count
+            )
+            image_count += len(image_paths)
+            negative_language_instructions = (
+                dataset[dataset["instruction_id"] != droid_episode["instruction_id"]][
+                    "language_instruction"
+                ]
+                .sample(negative_ratio)
+                .tolist()
+            )
+            if multi_image:
+                frames_per_camera = len(images) // N_CAMERAS
+                for i in range(0, len(images), frames_per_camera):
+                    internvl_episodes.extend(
+                        generate_internvl_episodes(
+                            language_instruction=language_instruction,
+                            images=image_paths[i : i + frames_per_camera],
+                            negative_language_instructions=negative_language_instructions,
+                        )
                     )
-                )
-        else:
-            for i, image_path in enumerate(image_paths):
-                internvl_episodes.extend(
-                    generate_internvl_episodes(
-                        language_instruction=language_instruction,
-                        images=[image_path],
-                        negative_language_instructions=negative_language_instructions,
+            else:
+                for i, image_path in enumerate(image_paths):
+                    internvl_episodes.extend(
+                        generate_internvl_episodes(
+                            language_instruction=language_instruction,
+                            images=[image_path],
+                            negative_language_instructions=negative_language_instructions,
+                        )
                     )
-                )
+        except Exception as e:
+            logging.error(f"Failed to process episode: {droid_episode}")
+            logging.error(e)
 
     with open(annotation_file_path, "a") as f:
         for internvl_episode in internvl_episodes:
