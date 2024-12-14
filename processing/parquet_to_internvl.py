@@ -6,7 +6,6 @@ from argparse import ArgumentParser
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from time import perf_counter
-from typing import Callable
 
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -107,9 +106,11 @@ class InternVLEpisode:
     width_list: list[int]
     height_list: list[int]
     conversations: list[dict]
+    success: bool
 
     def to_jsonl(self, with_id: int) -> dict:
         jsonl_entry = asdict(self)
+        jsonl_entry.pop("success")
         jsonl_entry.update({"id": with_id})
         return jsonl_entry
 
@@ -145,6 +146,7 @@ def generate_internvl_episodes(
                 {"from": "human", "value": question + language_instruction},
                 {"from": "gpt", "value": "yes"},
             ],
+            success=True,
         )
     )
     for neg_language_instruction in negative_language_instructions:
@@ -157,6 +159,7 @@ def generate_internvl_episodes(
                     {"from": "human", "value": question + neg_language_instruction},
                     {"from": "gpt", "value": "no"},
                 ],
+                success=False,
             )
         )
     return episodes
@@ -185,8 +188,8 @@ def generate_internvl_dataset(
     frames_per_grid: int,
     multi_image: bool,
     subsequences_per_episode: int,
-    process_fn: Callable = episode_to_image_grid,
-) -> int:
+    negative_ratio: int,
+) -> list[InternVLEpisode]:
     if output_path.exists():
         shutil.rmtree(output_path)
     output_path.mkdir(parents=True)
@@ -223,10 +226,10 @@ def generate_internvl_dataset(
 
     num_internvl_episodes = 0
     image_count = 0
+    internvl_episodes = []
     for _, droid_episode in tqdm(dataset.iterrows(), total=len(dataset)):
-        internvl_episodes = []
         language_instruction = droid_episode["language_instruction"]
-        images = process_fn(
+        images = episode_to_image_grid(
             droid_episode=droid_episode,
             frames_per_grid=frames_per_grid,
             subsequences_per_episode=subsequences_per_episode,
@@ -239,7 +242,7 @@ def generate_internvl_dataset(
             dataset[dataset["instruction_id"] != droid_episode["instruction_id"]][
                 "language_instruction"
             ]
-            .sample(1)
+            .sample(negative_ratio)
             .tolist()
         )
         if multi_image:
@@ -260,13 +263,13 @@ def generate_internvl_dataset(
                     )
                 )
 
-        with open(annotation_file_path, "a") as f:
-            for internvl_episode in internvl_episodes:
-                f.write(
-                    json.dumps(internvl_episode.to_jsonl(with_id=num_internvl_episodes))
-                    + "\n"
-                )
-                num_internvl_episodes += 1
+    with open(annotation_file_path, "a") as f:
+        for internvl_episode in internvl_episodes:
+            f.write(
+                json.dumps(internvl_episode.to_jsonl(with_id=num_internvl_episodes))
+                + "\n"
+            )
+            num_internvl_episodes += 1
 
     meta_file_path.write_text(
         # https://internvl.readthedocs.io/en/latest/get_started/chat_data_format.html#meta-file
@@ -282,7 +285,7 @@ def generate_internvl_dataset(
             }
         )
     )
-    return num_internvl_episodes
+    return internvl_episodes
 
 
 if __name__ == "__main__":
@@ -315,6 +318,12 @@ if __name__ == "__main__":
         default=1,
         help="Number of subsequences per episode.",
     )
+    parser.add_argument(
+        "--negative_ratio",
+        type=int,
+        default=1.0,
+        help="Ratio of negative examples to positive examples.",
+    )
     args = parser.parse_args()
 
     dataset_path = Path(args.dataset_path)
@@ -329,13 +338,19 @@ if __name__ == "__main__":
     logging.info(f"Dataset types: {dataset.dtypes}\n")
     logging.info(f"First episode: {dataset.iloc[0]}\n")
 
-    num_internvl_episodes = generate_internvl_dataset(
+    internvl_episodes = generate_internvl_dataset(
         dataset=dataset,
         output_path=output_path,
         frames_per_grid=args.frames_per_grid,
         multi_image=args.multi_image,
         subsequences_per_episode=args.subsequences_per_episode,
+        negative_ratio=args.negative_ratio,
     )
-    logging.info(f"Generated {num_internvl_episodes} InternVL episodes.")
-    # create a dataset name that takes into account the parameters
-    (output_path / "README").write_text(json.dumps(vars(args)))
+    logging.info(f"Generated {len(internvl_episodes)} InternVL episodes.")
+
+    num_negatives = len([ep for ep in internvl_episodes if not ep.success])
+    num_positives = len(internvl_episodes) - num_negatives
+    (output_path / "README").write_text(
+        json.dumps(vars(args))
+        + f"\nNum Positives: {num_positives}\nNum Negatives: {num_negatives}"
+    )
