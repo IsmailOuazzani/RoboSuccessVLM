@@ -80,7 +80,7 @@ Upload your fine tuning script to the instance. Choose one from the `./scripts` 
 Launch the fine tuning container:
 ```
 newgrp docker
-docker run --shm-size=16G --gpus all -it --name finetuning  ismailoz/internvl:latest
+docker run --shm-size=128G --gpus all -it --name finetuning  ismailoz/internvl:latest
 ```
 
 From the host machine, in a different shell, copy the relevant files (dataset and fine tuning script) to the container:
