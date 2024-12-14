@@ -11,17 +11,12 @@ export MASTER_PORT=34229
 export TF_CPP_MIN_LOG_LEVEL=3
 export LAUNCHER=pytorch
 
-OUTPUT_DIR='finetune_output'
+OUTPUT_DIR='finetune_output/internvl1b_imagegrid_11'
 
 if [ ! -d "$OUTPUT_DIR" ]; then
   mkdir -p "$OUTPUT_DIR"
 fi
 
-# number of gpus: 2
-# batch size per gpu: 4
-# gradient accumulation steps: 2
-# total batch size: 16
-# epoch: 1
 torchrun \
   --nnodes=1 \
   --node_rank=0 \
@@ -32,7 +27,7 @@ torchrun \
   --model_name_or_path "OpenGVLab/InternVL2-1B" \
   --conv_style "Hermes-2" \
   --output_dir ${OUTPUT_DIR} \
-  --meta_path "imagegrid/meta.json" \
+  --meta_path "imagegrid_11_neg/meta.json" \
   --overwrite_output_dir True \
   --force_image_size 448 \
   --max_dynamic_patch 6 \

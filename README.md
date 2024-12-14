@@ -63,6 +63,11 @@ Upload your dataset to the instance and unzip it:
 unzip droid_3_1_1_single_turn_432.zip
 ```
 
+#### Fine tuning scripts
+Upload your fine tuning script to the instance. Choose one from the `./scripts` folder in this repository.
+- `internvl_1b_imagegrid_11.sh` Use to train the 1B InternVL model on the imagegrid dataset with a 1:1 positive negative ratio.
+- - `internvl_1b_multiimage_11.sh` Use to train the 1B InternVL model on the multi_image dataset with a 1:1 positive negative ratio.
+
 #### Fine tune the model
 Launch the fine tuning container:
 ```
