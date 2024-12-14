@@ -13,7 +13,6 @@ Install [pre-commit](https://pre-commit.com/) configuration:
 pre-commit install
 ```
 
-
 ## Usage
 
 Activate virtual environment:
@@ -48,32 +47,38 @@ python processing/parquet_to_internvl.py --dataset_path out --output_path .idea/
 InternVL documentation: https://internvl.readthedocs.io/en/latest/internvl2.0/introduction.html
 
 ### Fine tuning
-#### Set up the environment
-We use GPUs rented from [Lambda Labs](https://lambdalabs.com/) to fine-tune [InternVL](https://internvl.readthedocs.io/en/latest/internvl2.0/finetune.html) models. Within a Lambda Labs instance, run the following to set up the fine tuning environment:
+#### Set up the Lambda Labs environment
+We use GPUs rented from [Lambda Labs](https://lambdalabs.com/) to fine-tune [InternVL](https://internvl.readthedocs.io/en/latest/internvl2.0/finetune.html) models. Within a Lambda Labs instance, run the following to set up the fine tuning environment.
+
+First, [set up Docker](https://docs.lambdalabs.com/education/programming/virtual-environments-containers/) on the instance:
 ```
-git clone git@github.com:IsmailOuazzani/CSC413-project.git
-sh CSC413-project/scripts/setup-lambdalabs-env.sh
+sudo adduser "$(id -un)" docker
+sudo usermod -aG docker $USER
+newgrp docker
 ```
-Alternatively, you could upload the `setup-lambdalabs-env.sh` file to your instance then run it.
 
 #### Set up the dataset
-Upload your dataset to the instance. After doing so, unzip and move the dataset to the correct directory. For example:
+Upload your dataset to the instance and unzip it:
 ```
 unzip droid_3_1_1_single_turn_432.zip
 ```
 
-#### Set up the fine tuning script
-We provide a fine tuning script in this repo. Upload it to your current directory.
-
 #### Fine tune the model
-Download the [pretrained model](https://internvl.readthedocs.io/en/latest/internvl2.0/finetune.html#model-preparation) of your choosing. For example:
+Launch the fine tuning container:
 ```
-huggingface-cli download --resume-download --local-dir-use-symlinks False OpenGVLab/InternVL2-1B --local-dir pretrained/InternVL2-1B
+newgrp docker
+docker run --gpus all -it --name finetuning  ismailoz/internvl:latest
 ```
 
-Finally, start the fine-tuning with our script. Note that you should match the number of GPUs to your setup:
+From the host machine, in a different shell, copy the relevant files (dataset and fine tuning script) to the container:
 ```
-GPUS=2 PER_DEVICE_BATCH_SIZE=1 sh finetune.sh
+newgrp docker
+docker cp . finetuning:/workspace/
+```
+
+Finally, within the container, start the fine-tuning with our script. Note that you should match the number of GPUs to your setup:
+```
+GPUS=1 PER_DEVICE_BATCH_SIZE=1 sh finetune.sh
 ```
 
 
