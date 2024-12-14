@@ -91,12 +91,15 @@ def process_droid_dataset(
     logging.info(f"Number of episodes to process: {num_episodes - start_episode}")
     logging.info(f"Number of dataset chunks: {num_chunks}")
     del full_dataset
+
+    logging.info("Initializing output directory")
     if output_path.exists():
         shutil.rmtree(output_path)
     output_path.mkdir(parents=True)
     manifest_path = output_path / MANIFEST_FILE_NAME
     output_files_path = output_path / "images"
     output_files_path.mkdir(parents=True)
+    logging.info(f"Output directory: {output_path}")
 
     num_episodes_extracted = 0
     episodes = []
@@ -104,6 +107,11 @@ def process_droid_dataset(
         for i in range(num_chunks):
             chunk_start = start_episode + i * chunk_size
             chunk_end = min(start_episode + (i + 1) * chunk_size, num_episodes)
+
+            # Last minute hack
+            if chunk_start == chunk_end:
+                continue
+
             chunk_dataset = tfds.load(
                 dataset_name,
                 data_dir=dataset_path,

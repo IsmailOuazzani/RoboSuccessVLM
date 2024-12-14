@@ -94,6 +94,17 @@ Finally, within the container, start the fine-tuning with our script. Note that 
 GPUS=4 PER_DEVICE_BATCH_SIZE=1 sh finetune.sh
 ```
 
+##### Merge LoRa weights
+ Start by making sure you have the model available (will be copied over if you already downloaded it through the fine tuning scripts):
+```
+huggingface-cli download --resume-download --local-dir-use-symlinks False OpenGVLab/InternVL2-1B --local-dir pretrained/InternVL2-1B
+```
+Merge the LoRa weights with the original model, and copy over utils to use it outside of this environment.
+```
+python InternVL/internvl_chat/tools/merge_lora.py internvl1b_imagegrid_11/ model_internvl1b_imagegrid_11
+cp pretrained/InternVL2-1B/*.py model_internvl1b_imagegrid_11/
+cp pretrained/InternVL2-1B/config.json model_internvl1b_imagegrid_11/
+```
 
 ### Benchmark Script Usage
 
