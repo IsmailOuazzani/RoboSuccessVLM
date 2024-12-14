@@ -26,6 +26,8 @@ from tqdm import tqdm
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+N_CAMERAS = len(CAMERAS)
+
 
 def sample_uniformly(frames: list[str], n: int, subsequences: int) -> list[list[str]]:
     subsequences_list = []
@@ -130,8 +132,7 @@ def generate_internvl_episodes(
     question = PROMPT_REASONING_GUIDANCE
     if len(images) > 1:
         for j in range(len(images)):
-            camera_number = j // (len(images) // 3)
-            question += f"Camera{camera_number} frame {j % (len(images) // 3)}: <image>"
+            question += f"Frame {j}: <image>"
     else:
         question += "<image>"
     question += "\nHas the following task been achieved:"
@@ -247,13 +248,15 @@ def generate_internvl_dataset(
             .tolist()
         )
         if multi_image:
-            internvl_episodes.extend(
-                generate_internvl_episodes(
-                    language_instruction=language_instruction,
-                    images=image_paths,
-                    negative_language_instructions=negative_language_instructions,
+            frames_per_camera = len(images) // N_CAMERAS
+            for i in range(0, len(images), frames_per_camera):
+                internvl_episodes.extend(
+                    generate_internvl_episodes(
+                        language_instruction=language_instruction,
+                        images=image_paths[i : i + frames_per_camera],
+                        negative_language_instructions=negative_language_instructions,
+                    )
                 )
-            )
         else:
             for i, image_path in enumerate(image_paths):
                 internvl_episodes.extend(
