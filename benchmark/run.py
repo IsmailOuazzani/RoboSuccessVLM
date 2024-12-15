@@ -36,17 +36,19 @@ def build_transform(input_size: int) -> T.Compose:
     return transform
 
 
-def load_images_internvl(
-    image_paths: List[Path], input_size: int = 448
-) -> torch.Tensor:
+def load_images_in_batches(
+    image_paths: List[Path], input_size: int = 448, batch_size: int = 16
+):
     transform = build_transform(input_size=input_size)
-    images = []
-    for image_path in image_paths:
-        image = Image.open(image_path).convert("RGB")
-        image = transform(image)
-        images.append(image)
-    images = torch.stack(images)  # Stack images into a batch
-    return images
+
+    for i in range(0, len(image_paths), batch_size):
+        batch_paths = image_paths[i : i + batch_size]
+        batch_images = []
+        for image_path in batch_paths:
+            image = Image.open(image_path).convert("RGB")
+            image = transform(image)
+            batch_images.append(image)
+        yield torch.stack(batch_images)  # Yield the batch tensor directly
 
 
 def encode_image_openai(image_path: str) -> str:
@@ -111,11 +113,18 @@ def run_inference(
     else:
         # InternVL
         # Load and preprocess images
-        images = (
-            load_images_internvl([Path(p) for p in image_paths], input_size=448)
-            .to(torch.bfloat16)
-            .cuda()
-        )
+        # Instead of directly chaining .to(), first collect the images:
+        all_batches = []
+        for batch in load_images_in_batches(
+            [Path(p) for p in image_paths], input_size=448
+        ):
+            all_batches.append(batch)
+        if len(all_batches) > 0:
+            images = torch.cat(all_batches, dim=0).to(torch.bfloat16).cuda()
+        else:
+            # Handle the case if no images are provided
+            images = None
+
         generation_config = {"max_new_tokens": max_tokens, "do_sample": False}
         # For multi-turn, we pass the history back and forth
         if history is not None:
@@ -151,37 +160,56 @@ def run_inference(
 
 
 def benchmark_single_turn(
-    dataset, model_type: str, model, tokenizer, data_path: str, max_tokens: int = 10
+    dataset,
+    model_type: str,
+    model,
+    tokenizer,
+    image_paths: List[Path],
+    data_path: str,
+    max_tokens: int = 10,
+    batch_size: int = 16,
 ) -> Tuple[int, int, int, int, str]:
     tp, fp, tn, fn = 0, 0, 0, 0
     log_content = ""
 
-    for sample in tqdm(dataset, desc="Benchmarking Single Turn"):
+    for sample_index, sample in enumerate(
+        tqdm(dataset, desc="Benchmarking Single Turn")
+    ):
         question = sample["conversations"][0]["value"]
         ground_truth = sample["conversations"][1]["value"].strip().lower()
-        image_files = [
-            os.path.join(data_path, img_file) for img_file in sample["image"]
+        sample_image_paths = [
+            Path(os.path.join(data_path, img_file)) for img_file in sample["image"]
         ]
 
-        model_answer, _ = run_inference(
-            model_type=model_type,
-            model=model,
-            tokenizer=tokenizer,
-            question=question,
-            image_paths=image_files,
-            max_tokens=max_tokens,
-        )
+        # Iterate through batches from the generator
+        for batch_images in load_images_in_batches(
+            sample_image_paths, input_size=448, batch_size=batch_size
+        ):
+            batch_images = batch_images.to(
+                torch.bfloat16
+            ).cuda()  # Move tensor batch to GPU and convert to bfloat16
 
-        log_content += f"Question: {question}\nModel Answer: {model_answer}\nGround Truth: {ground_truth}\n"
+            # Run inference for the batch
+            model_answer, _ = run_inference(
+                model_type=model_type,
+                model=model,
+                tokenizer=tokenizer,
+                question=question,
+                image_paths=[],  # No need for paths since we use batches
+                max_tokens=max_tokens,
+                history=None,
+            )
 
-        if model_answer == "yes" and ground_truth == "yes":
-            tp += 1
-        elif model_answer == "yes" and ground_truth == "no":
-            fp += 1
-        elif model_answer == "no" and ground_truth == "no":
-            tn += 1
-        elif model_answer == "no" and ground_truth == "yes":
-            fn += 1
+            log_content += f"Question: {question}\nModel Answer: {model_answer}\nGround Truth: {ground_truth}\n"
+
+            if model_answer == "yes" and ground_truth == "yes":
+                tp += 1
+            elif model_answer == "yes" and ground_truth == "no":
+                fp += 1
+            elif model_answer == "no" and ground_truth == "no":
+                tn += 1
+            elif model_answer == "no" and ground_truth == "yes":
+                fn += 1
 
     return tp, fp, tn, fn, log_content
 
@@ -288,6 +316,9 @@ def compute_metrics(tp, fp, tn, fn):
 
 
 if __name__ == "__main__":
+    # Hardcode batch size
+    BATCH_SIZE = 15000  # Adjust this value based on your system's resources
+
     parser = ArgumentParser(description="Run merged benchmarks for models")
     parser.add_argument("dataset_file", type=str, help="Path to the JSONL dataset file")
     parser.add_argument(
@@ -389,14 +420,22 @@ if __name__ == "__main__":
 
     dataset = load_dataset(args.dataset_file)
     data_path = str(Path(args.dataset_file).parent)
+    image_paths = [
+        Path(os.path.join(data_path, img_file))
+        for sample in dataset
+        for img_file in sample["image"]
+    ]
 
+    # Run benchmark
     if args.benchmark_type == "single":
         tp, fp, tn, fn, log_content = benchmark_single_turn(
             dataset=dataset,
             model_type=args.model_type,
             model=model,
             tokenizer=tokenizer,
+            image_paths=image_paths,
             data_path=data_path,
+            batch_size=BATCH_SIZE,  # Set a batch size suitable for your system
         )
     elif args.benchmark_type == "multi":
         tp, fp, tn, fn, log_content = benchmark_multi_turn(
