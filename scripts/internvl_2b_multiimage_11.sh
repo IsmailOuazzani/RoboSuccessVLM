@@ -1,8 +1,9 @@
 set -x
 
-GPUS=${GPUS:-2}
-BATCH_SIZE=${BATCH_SIZE:-16}
-PER_DEVICE_BATCH_SIZE=${PER_DEVICE_BATCH_SIZE:-4}
+# Optimal config for 8xA100
+GPUS=8
+BATCH_SIZE=128
+PER_DEVICE_BATCH_SIZE=16
 GRADIENT_ACC=$((BATCH_SIZE / PER_DEVICE_BATCH_SIZE / GPUS))
 
 
@@ -11,17 +12,12 @@ export MASTER_PORT=34229
 export TF_CPP_MIN_LOG_LEVEL=3
 export LAUNCHER=pytorch
 
-OUTPUT_DIR='finetune_output'
+OUTPUT_DIR='finetune_output/internvl2b_multiimage_11'
 
 if [ ! -d "$OUTPUT_DIR" ]; then
   mkdir -p "$OUTPUT_DIR"
 fi
 
-# number of gpus: 2
-# batch size per gpu: 4
-# gradient accumulation steps: 2
-# total batch size: 16
-# epoch: 1
 torchrun \
   --nnodes=1 \
   --node_rank=0 \
@@ -29,10 +25,10 @@ torchrun \
   --nproc_per_node=${GPUS} \
   --master_port=${MASTER_PORT} \
   InternVL/internvl_chat/internvl/train/internvl_chat_finetune.py \
-  --model_name_or_path "OpenGVLab/InternVL2-1B" \
+  --model_name_or_path "OpenGVLab/InternVL2-2B" \
   --conv_style "Hermes-2" \
   --output_dir ${OUTPUT_DIR} \
-  --meta_path "imagegrid/meta.json" \
+  --meta_path "multi_image_11neg/meta.json" \
   --overwrite_output_dir True \
   --force_image_size 448 \
   --max_dynamic_patch 6 \
@@ -45,7 +41,7 @@ torchrun \
   --vision_select_layer -1 \
   --dataloader_num_workers 4 \
   --bf16 True \
-  --num_train_epochs 3 \
+  --num_train_epochs 1 \
   --per_device_train_batch_size ${PER_DEVICE_BATCH_SIZE} \
   --gradient_accumulation_steps ${GRADIENT_ACC} \
   --evaluation_strategy "no" \

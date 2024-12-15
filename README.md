@@ -58,29 +58,53 @@ newgrp docker
 ```
 
 #### Set up the dataset
-Upload your dataset to the instance and unzip it:
+Download your datasets on the instance. To do so, we recommend using the `gdown` pip package.
+You can directly install it on the instance with:
 ```
-unzip droid_3_1_1_single_turn_432.zip
+pip install gdown
 ```
+Then, download the dataset of your choosing. The format should look like:
+```
+gdown https://drive.google.com/uc?id=1kYKoTa82r0TbvAW5Z8JBPDteFQMrAswe
+```
+Note that this approach is much faster than uploading files through the browser. Finally, unzip or untar your datasets. For example:
+```
+tar -xvf imagegrid_11_neg.tar
+```
+#### Fine tuning scripts
+Upload your fine tuning script to the instance. Choose one from the `./scripts` folder in this repository.
+- `internvl_1b_imagegrid_11.sh` Use to train the 1B InternVL model on the imagegrid dataset with a 1:1 positive negative ratio.
+- `internvl_1b_multiimage_11.sh` Use to train the 1B InternVL model on the multi_image dataset with a 1:1 positive negative ratio.
 
 #### Fine tune the model
 Launch the fine tuning container:
 ```
 newgrp docker
-docker run --gpus all -it --name finetuning  ismailoz/internvl:latest
+docker run --shm-size=128G --gpus all -it --name finetuning  ismailoz/internvl:latest
 ```
 
 From the host machine, in a different shell, copy the relevant files (dataset and fine tuning script) to the container:
 ```
 newgrp docker
-docker cp . finetuning:/workspace/
+docker cp <file or folder name> finetuning:/workspace/
 ```
 
 Finally, within the container, start the fine-tuning with our script. Note that you should match the number of GPUs to your setup:
 ```
-GPUS=1 PER_DEVICE_BATCH_SIZE=1 sh finetune.sh
+GPUS=4 PER_DEVICE_BATCH_SIZE=1 sh finetune.sh
 ```
 
+##### Merge LoRa weights
+ Start by making sure you have the model available (will be copied over if you already downloaded it through the fine tuning scripts):
+```
+huggingface-cli download --resume-download --local-dir-use-symlinks False OpenGVLab/InternVL2-1B --local-dir pretrained/InternVL2-1B
+```
+Merge the LoRa weights with the original model, and copy over utils to use it outside of this environment.
+```
+python InternVL/internvl_chat/tools/merge_lora.py internvl1b_imagegrid_11/ model_internvl1b_imagegrid_11
+cp pretrained/InternVL2-1B/*.py model_internvl1b_imagegrid_11/
+cp pretrained/InternVL2-1B/config.json model_internvl1b_imagegrid_11/
+```
 
 ### Benchmark Script Usage
 
